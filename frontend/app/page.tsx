@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Shield, Zap, Lock, Globe, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Zap, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 import { publicClient, ENS_PUBLIC_RESOLVER, RESOLVER_ABI } from "@/lib/ensClient";
 import { namehash } from "viem";
@@ -114,35 +114,22 @@ export default function Home() {
       <Navbar />
 
       <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-12">
-        {/* Compact header */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-600/15 border border-brand-500/30 text-brand-300 text-xs font-medium">
+        {/* Header */}
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-600/15 border border-brand-500/30 text-brand-300 text-xs font-medium mb-4">
             <Zap className="w-3 h-3" />
-            ENS · PolicyGuard · ERC-7730 · Dynamic
+            ENS · PolicyGuard · ERC-7730 · Ledger · Dynamic
           </div>
-          <div className="flex items-center gap-3 ml-auto">
-            {[
-              { icon: Globe, label: "ENS" },
-              { icon: Lock, label: "On-chain" },
-              { icon: Shield, label: "Ledger" },
-            ].map(({ icon: Icon, label }) => (
-              <div key={label} className="hidden sm:flex items-center gap-1 text-gray-600 text-xs">
-                <Icon className="w-3 h-3 text-brand-500" />
-                {label}
-              </div>
-            ))}
-          </div>
+          <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
+            Your agent spends.{" "}
+            <span className="text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(135deg, #a78bff 0%, #7c3aed 50%, #06b6d4 100%)" }}>
+              You set the limits.
+            </span>
+          </h1>
+          <p className="text-gray-500 text-sm">
+            Define what your AI agent can spend. Published to ENS. Enforced on-chain. Move the name, move the rules.
+          </p>
         </div>
-
-        <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
-          Spending rules that travel{" "}
-          <span className="text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(135deg, #a78bff 0%, #7c3aed 50%, #06b6d4 100%)" }}>
-            with your agent
-          </span>
-        </h1>
-        <p className="text-gray-500 text-sm mb-8">
-          Define what your AI agent can spend. Published to ENS. Enforced on-chain. Move the name, move the rules.
-        </p>
 
         {/* Main layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
