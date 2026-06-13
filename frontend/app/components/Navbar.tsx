@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Shield, Activity, Search, LogOut } from "lucide-react";
+import { DynamicWidget } from "@dynamic-labs/sdk-react-core";
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 import { useEffect, useState } from "react";
 
@@ -32,6 +33,9 @@ function WalletPill() {
 
 export default function Navbar() {
   const pathname = usePathname();
+  const { primaryWallet } = useDynamicContext();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const links = [
     { href: "/", label: "Policy Editor", icon: Shield },
@@ -80,8 +84,8 @@ export default function Navbar() {
             Sepolia
           </div>
 
-          {/* Wallet pill — only shown when connected */}
-          <WalletPill />
+          {/* Wallet — shows connect button or connected pill */}
+          {mounted && primaryWallet ? <WalletPill /> : <DynamicWidget />}
         </div>
       </div>
     </nav>

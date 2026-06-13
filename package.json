@@ -2,6 +2,15 @@
   "name": "allowance-agent-setup",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "demo:01": "tsx scripts/demo/01_happy_small_swap.ts",
+    "demo:02": "tsx scripts/demo/02_happy_near_threshold.ts",
+    "demo:03": "tsx scripts/demo/03_fail_not_allowlisted.ts",
+    "demo:04": "tsx scripts/demo/04_fail_daily_cap.ts",
+    "demo:05": "tsx scripts/demo/05_fail_approval_threshold.ts",
+    "demo:06": "tsx scripts/demo/06_fail_outside_hours.ts",
+    "demo:07": "tsx scripts/demo/07_fail_cap_exhausted.ts"
+  },
   "dependencies": {
     "dotenv": "^17.4.2",
     "viem": "^2.52.2"
@@ -9,6 +18,7 @@
   "devDependencies": {
     "@types/node": "^25.9.3",
     "ts-node": "^10.9.2",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }
 }

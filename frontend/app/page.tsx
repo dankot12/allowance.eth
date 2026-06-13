@@ -1,110 +1,106 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Shield, ArrowRight, Zap, Lock, Globe, ChevronDown, Loader2, AlertCircle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Shield, ArrowRight, Zap, Lock, Globe, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
-import { createPublicClient, http } from "viem";
-import { sepolia } from "viem/chains";
+import { publicClient, ENS_PUBLIC_RESOLVER, RESOLVER_ABI } from "@/lib/ensClient";
+import { namehash } from "viem";
 import Navbar from "./components/Navbar";
 import PolicyEditor from "./components/PolicyEditor";
 import PolicyCard from "./components/PolicyCard";
 import PublishPanel from "./components/PublishPanel";
 import type { AllowancePolicy } from "@/lib/policySchema";
 
-const publicClient = createPublicClient({
-  chain: sepolia,
-  transport: http(process.env.NEXT_PUBLIC_RPC_URL ?? "https://rpc.sepolia.org"),
-});
-
-// Queries the chain directly — no hardcoded names.
-// 1. Reverse ENS lookup for the wallet's primary name.
-// 2. ENS Sepolia subgraph for any additional owned names.
-async function lookupEnsNames(address: string): Promise<string[]> {
-  const found = new Set<string>();
-
-  // Reverse resolution — what primary name has this address set?
+// Forward resolution: addr(namehash(name)) on the configured resolver.
+// Works for CCIP-Read names (like traderbot.eth) where reverse lookup fails.
+async function resolveEnsToAddress(name: string): Promise<string | null> {
   try {
-    const primary = await publicClient.getEnsName({ address: address as `0x${string}` });
-    if (primary && primary.includes(".")) found.add(primary);
-  } catch {}
-
-  // Subgraph — names owned by this address
-  try {
-    const res = await fetch(
-      "https://api.studio.thegraph.com/query/49574/enssepolia/version/latest",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: `{ domains(where: { owner: "${address.toLowerCase()}" }) { name } }`,
-        }),
-      }
-    );
-    const data = await res.json();
-    for (const d of (data?.data?.domains ?? []) as { name: string }[]) {
-      const n = d.name;
-      if (n && !n.includes(".addr.reverse") && !/^\[[\da-f]{64}\]/.test(n))
-        found.add(n);
-    }
-  } catch {}
-
-  return Array.from(found).sort();
-}
-
-interface EnsOption {
-  name: string;
-  isSubname: boolean;
-}
-
-function parseEnsOptions(names: string[]): EnsOption[] {
-  return names.map((name) => ({
-    name,
-    isSubname: name.split(".").length > 2,
-  }));
-}
-
-function truncateAddress(addr: string): string {
-  if (!addr || addr.length < 10) return addr;
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+    const node = namehash(name);
+    const addr = await publicClient.readContract({
+      address: ENS_PUBLIC_RESOLVER,
+      abi: RESOLVER_ABI,
+      functionName: "addr",
+      args: [node],
+    });
+    return (addr as string) || null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Main page ───────────────────────────────────────────────
+
+type VerifyStatus = "idle" | "checking" | "valid" | "invalid";
 
 export default function Home() {
   const { primaryWallet } = useDynamicContext();
   const [mounted, setMounted] = useState(false);
   const [policy, setPolicy] = useState<AllowancePolicy | null>(null);
   const [ensName, setEnsName] = useState("");
-  const [ensOptions, setEnsOptions] = useState<EnsOption[]>([]);
-  const [ensLoading, setEnsLoading] = useState(false);
-  const [ensResolved, setEnsResolved] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [showNoEnsModal, setShowNoEnsModal] = useState(false);
+  const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("idle");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const verifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setMounted(true), []);
 
-  // Resolve ENS names when wallet connects
+  // Forward-verify the typed name: addr(namehash(name)) must match wallet
   useEffect(() => {
-    if (!primaryWallet?.address) {
-      setEnsOptions([]);
-      setEnsName("");
-      setEnsResolved(false);
+    if (verifyTimer.current) clearTimeout(verifyTimer.current);
+    const wallet = primaryWallet?.address;
+    if (!wallet || !ensName.includes(".")) {
+      setVerifyStatus("idle");
       return;
     }
-    setEnsLoading(true);
-    setEnsResolved(false);
-    lookupEnsNames(primaryWallet.address).then((names) => {
-      const options = parseEnsOptions(names);
-      setEnsOptions(options);
-      setEnsLoading(false);
-      setEnsResolved(true);
-      if (options.length === 0) setShowNoEnsModal(true);
-      else setEnsName(options[0].name);
-    });
+    setVerifyStatus("checking");
+    verifyTimer.current = setTimeout(async () => {
+      const resolved = await resolveEnsToAddress(ensName);
+      if (resolved && resolved.toLowerCase() === wallet.toLowerCase()) {
+        setVerifyStatus("valid");
+      } else {
+        setVerifyStatus("invalid");
+      }
+    }, 600);
+    return () => { if (verifyTimer.current) clearTimeout(verifyTimer.current); };
+  }, [ensName, primaryWallet?.address]);
+
+  // On wallet connect, pre-fill suggestions from localStorage + try reverse lookup
+  useEffect(() => {
+    if (!primaryWallet?.address) {
+      setEnsName("");
+      setSuggestions([]);
+      setVerifyStatus("idle");
+      return;
+    }
+    // Load previously verified names from localStorage
+    const stored = JSON.parse(localStorage.getItem("ens_suggestions") || "[]") as string[];
+    setSuggestions(stored);
+    // Try reverse resolution as a bonus — won't work for CCIP names but fine if it does
+    publicClient.getEnsName({ address: primaryWallet.address as `0x${string}` })
+      .then((n) => {
+        if (n && n.includes(".")) {
+          setSuggestions((prev) => Array.from(new Set([n, ...prev])));
+          if (!ensName) setEnsName(n);
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primaryWallet?.address]);
 
-  const selectedOption = ensOptions.find((o) => o.name === ensName);
+  // Persist verified names to localStorage
+  useEffect(() => {
+    if (verifyStatus === "valid" && ensName) {
+      setSuggestions((prev) => {
+        const next = Array.from(new Set([ensName, ...prev])).slice(0, 10);
+        localStorage.setItem("ens_suggestions", JSON.stringify(next));
+        return next;
+      });
+    }
+  }, [verifyStatus, ensName]);
+
   const connectedWallet = mounted ? primaryWallet : null;
+  const isSubname = ensName.split(".").length > 2;
 
   return (
     <div className="min-h-screen">
@@ -159,112 +155,61 @@ export default function Home() {
           {/* Left — Editor */}
           <div className="lg:col-span-2 space-y-5">
 
-            {/* ENS name selector */}
+            {/* ENS name input */}
             <div className="card p-5">
               <label className="label mb-2 block">Agent ENS name</label>
+              <div className="relative">
+                <input
+                  ref={inputRef}
+                  className="input-field font-mono pr-10"
+                  placeholder="yourname.eth"
+                  value={ensName}
+                  disabled={!connectedWallet}
+                  onChange={(e) => {
+                    setEnsName(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {verifyStatus === "checking" && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
+                  {verifyStatus === "valid" && <CheckCircle2 className="w-4 h-4 text-success" />}
+                  {verifyStatus === "invalid" && <AlertCircle className="w-4 h-4 text-danger" />}
+                </div>
 
-              {!connectedWallet ? (
-                // Not connected
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-surface-200/50 border border-surface-300 text-sm text-gray-500">
-                  Connect your wallet to load ENS names
-                </div>
-              ) : ensLoading ? (
-                // Resolving
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-surface-200/50 border border-surface-300">
-                  <Loader2 className="w-4 h-4 animate-spin text-brand-400 flex-shrink-0" />
-                  <span className="text-sm text-gray-400">Resolving ENS names…</span>
-                </div>
-              ) : ensResolved && ensOptions.length === 0 ? (
-                // Resolved but nothing found — disabled
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-danger/10 border border-danger/20 text-sm text-danger cursor-not-allowed">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  No ENS name found for this wallet
-                </div>
-              ) : (
-                // Connected with ENS names — dropdown picker
-                <div className="space-y-2">
-                  <div className="relative">
-                    <button
-                      className="w-full flex items-center justify-between input-field text-left"
-                      onClick={() => setShowDropdown((v) => !v)}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        {selectedOption ? (
-                          <>
-                            <span className="font-mono text-sm text-white truncate">
-                              {selectedOption.name}
-                            </span>
-                            <span className={`badge flex-shrink-0 ${selectedOption.isSubname ? "badge-info" : "badge-muted"}`}>
-                              {selectedOption.isSubname ? "subname" : "parent"}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-gray-500 text-sm font-mono">
-                            Default ({truncateAddress(connectedWallet?.address ?? "")})
+                {/* Suggestions dropdown */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute z-20 mt-1 w-full card border border-surface-400/50 shadow-glow-sm overflow-hidden">
+                    {suggestions.map((s) => {
+                      const sub = s.split(".").length > 2;
+                      return (
+                        <button
+                          key={s}
+                          className={`w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-surface-300/50 transition-colors ${ensName === s ? "bg-brand-600/15" : ""}`}
+                          onMouseDown={() => { setEnsName(s); setShowSuggestions(false); }}
+                        >
+                          <span className="font-mono text-sm text-white flex-1 truncate">{s}</span>
+                          <span className={`badge flex-shrink-0 ${sub ? "badge-info" : "badge-muted"}`}>
+                            {sub ? "subname" : "parent"}
                           </span>
-                        )}
-                      </div>
-                      <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${showDropdown ? "rotate-180" : ""}`} />
-                    </button>
-
-                    {showDropdown && (
-                      <div className="absolute z-20 mt-1 w-full card border border-surface-400/50 shadow-glow-sm overflow-hidden">
-                        {/* Group by type */}
-                        {["parent", "subname"].map((type) => {
-                          const group = ensOptions.filter((o) =>
-                            type === "subname" ? o.isSubname : !o.isSubname
-                          );
-                          if (group.length === 0) return null;
-                          return (
-                            <div key={type}>
-                              <p className="px-3 pt-2 pb-1 text-[10px] font-medium text-gray-600 uppercase tracking-wider">
-                                {type === "subname" ? "Subnames" : "Parent names"}
-                              </p>
-                              {group.map((option) => (
-                                <button
-                                  key={option.name}
-                                  className={`w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-surface-300/50 transition-colors ${
-                                    ensName === option.name ? "bg-brand-600/15" : ""
-                                  }`}
-                                  onClick={() => {
-                                    setEnsName(option.name);
-                                    setShowDropdown(false);
-                                  }}
-                                >
-                                  <span className="font-mono text-sm text-white flex-1 truncate">
-                                    {option.name}
-                                  </span>
-                                  <span className={`badge flex-shrink-0 ${option.isSubname ? "badge-info" : "badge-muted"}`}>
-                                    {option.isSubname ? "subname" : "parent"}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          );
-                        })}
-
-                        {/* Manual entry option */}
-                        <div className="border-t border-surface-300 px-3 py-2">
-                          <p className="text-[10px] text-gray-600 mb-1">Or type a name manually</p>
-                          <input
-                            className="input-field text-xs py-1.5"
-                            placeholder="custom.eth"
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => setEnsName(e.target.value)}
-                            value={ensOptions.find((o) => o.name === ensName) ? "" : ensName}
-                          />
-                        </div>
-                      </div>
-                    )}
+                        </button>
+                      );
+                    })}
                   </div>
-
-                  <p className="text-xs text-gray-600">
-                    {selectedOption?.isSubname
-                      ? "Subname — ideal for isolating a single agent's policy under your parent name."
-                      : "Parent name — policy applies to the root ENS name."}
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
+              <p className={`text-xs mt-1.5 ${verifyStatus === "invalid" ? "text-danger" : "text-gray-600"}`}>
+                {!connectedWallet
+                  ? "Connect your wallet first."
+                  : verifyStatus === "checking"
+                  ? "Verifying name resolves to your wallet…"
+                  : verifyStatus === "valid"
+                  ? (isSubname ? "✓ Subname verified — policy scoped to this agent." : "✓ Name verified — resolves to your wallet.")
+                  : verifyStatus === "invalid"
+                  ? "This name doesn't resolve to your connected wallet."
+                  : "Type your ENS name (e.g. traderbot.eth)"}
+              </p>
             </div>
 
             {/* Policy editor */}
@@ -313,37 +258,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* No ENS modal */}
-      {showNoEnsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowNoEnsModal(false)} />
-          <div className="relative card p-6 max-w-sm w-full space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-danger/15 border border-danger/30 flex items-center justify-center flex-shrink-0">
-                <AlertCircle className="w-5 h-5 text-danger" />
-              </div>
-              <div>
-                <p className="font-semibold text-white">No ENS name found</p>
-                <p className="text-xs text-gray-500 mt-0.5">Checked reverse resolution and subgraph</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-400">
-              This wallet has no ENS name on Sepolia. To use Allowance.eth you need an ENS name — register one at{" "}
-              <a href="https://explorer.ens.dev" target="_blank" rel="noopener noreferrer" className="text-brand-300 hover:text-brand-200 underline">
-                explorer.ens.dev
-              </a>{" "}
-              and then try again.
-            </p>
-            <button
-              className="btn-secondary w-full justify-center"
-              onClick={() => setShowNoEnsModal(false)}
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Footer */}
       <footer className="border-t border-surface-300/40 mt-8">

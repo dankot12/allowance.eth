@@ -47,6 +47,7 @@ export const publicClient = createPublicClient({
 export const RESOLVER_ABI = parseAbi([
   "function text(bytes32 node, string key) external view returns (string)",
   "function setText(bytes32 node, string key, string value) external",
+  "function addr(bytes32 node) external view returns (address)",
 ]);
 
 export const POLICY_GUARD_ABI = parseAbi([
