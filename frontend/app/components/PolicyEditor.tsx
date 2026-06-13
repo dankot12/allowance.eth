@@ -6,8 +6,6 @@ import {
   Code2,
   AlertCircle,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Loader2,
   Copy,
   Check,
@@ -49,7 +47,6 @@ export default function PolicyEditor({ value, onChange }: PolicyEditorProps) {
   const [nlError, setNlError] = useState<string | null>(null);
   const [nlAmbiguous, setNlAmbiguous] = useState(false);
   const [jsonErrors, setJsonErrors] = useState<string[]>([]);
-  const [showPreview, setShowPreview] = useState(true);
   const [copied, setCopied] = useState(false);
 
   // Validate initial JSON on mount
@@ -292,52 +289,6 @@ export default function PolicyEditor({ value, onChange }: PolicyEditorProps) {
         </div>
       )}
 
-      {/* Collapsible preview */}
-      {value && (
-        <div className="border border-surface-300/50 rounded-xl overflow-hidden">
-          <button
-            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-300 hover:text-white hover:bg-surface-200/50 transition-colors"
-            onClick={() => setShowPreview((p) => !p)}
-          >
-            <span className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-success" />
-              Policy preview
-            </span>
-            {showPreview ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-          {showPreview && (
-            <div className="px-4 pb-4 space-y-2 border-t border-surface-300/50 pt-3">
-              {value.name && <p className="text-sm font-semibold text-white">{value.name}</p>}
-              <div className="grid grid-cols-1 gap-2">
-                {value.dailyCap && (
-                  <Row label="Daily cap" value={`${value.dailyCap.amount} ${value.dailyCap.token}`} />
-                )}
-                {value.approvalThreshold && (
-                  <Row label="Human approval above" value={`${value.approvalThreshold.amount} ${value.approvalThreshold.token}`} />
-                )}
-                {value.allowlist && value.allowlist.length > 0 && (
-                  <Row label={`Allowlist (${value.allowlist.length})`} value={value.allowlist.join(", ")} mono />
-                )}
-                {value.timeWindow && (
-                  <Row label="Time window" value={`${value.timeWindow.start}–${value.timeWindow.end} ${value.timeWindow.timezone}`} />
-                )}
-                {value.perCounterpartyCap && (
-                  <Row label="Per-contract cap" value={`${value.perCounterpartyCap.amount} ${value.perCounterpartyCap.token}/day`} />
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex items-start gap-3">
-      <p className="text-xs text-gray-500 w-36 flex-shrink-0 pt-0.5">{label}</p>
-      <p className={`text-xs text-gray-200 break-all ${mono ? "font-mono" : ""}`}>{value}</p>
     </div>
   );
 }

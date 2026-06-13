@@ -5,7 +5,7 @@
       "deployments": [
         {
           "chainId": 11155111,
-          "address": "0x95028D3bFb24c168E55bEead6FFd3AeA2851c4dA"
+          "address": "0x08d6142A58d721c80a0d810c3300306c89525dA7"
         }
       ],
       "abi": [
@@ -54,6 +54,43 @@
           ]
         },
         {
+          "name": "checkWithHumanApproval",
+          "type": "function",
+          "inputs": [
+            { "name": "namehash_", "type": "bytes32" },
+            { "name": "target", "type": "address" },
+            { "name": "value", "type": "uint256" },
+            { "name": "data", "type": "bytes" },
+            {
+              "name": "policy",
+              "type": "tuple",
+              "components": [
+                { "name": "dailyCap", "type": "tuple", "components": [
+                    { "name": "amount", "type": "uint256" },
+                    { "name": "enabled", "type": "bool" }
+                ]},
+                { "name": "approvalThreshold", "type": "tuple", "components": [
+                    { "name": "amount", "type": "uint256" },
+                    { "name": "enabled", "type": "bool" }
+                ]},
+                { "name": "perCounterpartyCap", "type": "tuple", "components": [
+                    { "name": "amount", "type": "uint256" },
+                    { "name": "enabled", "type": "bool" }
+                ]},
+                { "name": "timeWindow", "type": "tuple", "components": [
+                    { "name": "start", "type": "uint32" },
+                    { "name": "end", "type": "uint32" },
+                    { "name": "enabled", "type": "bool" }
+                ]},
+                { "name": "allowlist", "type": "address[]" },
+                { "name": "allowlistEnabled", "type": "bool" }
+              ]
+            },
+            { "name": "policyJson", "type": "string" },
+            { "name": "humanSig", "type": "bytes" }
+          ]
+        },
+        {
           "name": "transferPolicyOwnership",
           "type": "function",
           "inputs": [
@@ -70,13 +107,13 @@
     "info": {
       "url": "https://allowance.eth",
       "legalName": "Allowance.eth Protocol",
-      "lastUpdate": "2025-06-13"
+      "lastUpdate": "2026-06-13"
     },
     "enums": {
       "KnownContract": {
         "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45": "Uniswap V3 SwapRouter02",
         "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD": "Uniswap Universal Router",
-        "0x95028D3bFb24c168E55bEead6FFd3AeA2851c4dA": "PolicyGuard"
+        "0x08d6142A58d721c80a0d810c3300306c89525dA7": "PolicyGuard"
       }
     }
   },
@@ -159,6 +196,48 @@
             {
               "title": "Time Window",
               "fields": ["policy.timeWindow.start", "policy.timeWindow.end"]
+            }
+          ]
+        }
+      },
+
+      "checkWithHumanApproval(bytes32,address,uint256,bytes,(((uint256,bool),(uint256,bool),(uint256,bool),(uint32,uint32,bool),address[],bool)),string,bytes)": {
+        "intent": "Approve Agent Transaction (Human Override)",
+        "fields": [
+          {
+            "path": "target",
+            "label": "Destination",
+            "format": "addressName",
+            "params": { "enumPath": "$.metadata.enums.KnownContract" }
+          },
+          {
+            "path": "value",
+            "label": "Amount (USDC)",
+            "format": "tokenAmount",
+            "params": { "tokenPath": "USDC", "decimals": 18 }
+          },
+          {
+            "path": "policy.approvalThreshold.amount",
+            "label": "Threshold Exceeded Above",
+            "format": "tokenAmount",
+            "params": { "tokenPath": "USDC", "decimals": 18 }
+          },
+          {
+            "path": "policy.dailyCap.amount",
+            "label": "Daily Cap",
+            "format": "tokenAmount",
+            "params": { "tokenPath": "USDC", "decimals": 18 }
+          }
+        ],
+        "screens": {
+          "ledger": [
+            {
+              "title": "Human Approval",
+              "fields": ["target", "value"]
+            },
+            {
+              "title": "Policy Limits",
+              "fields": ["policy.approvalThreshold.amount", "policy.dailyCap.amount"]
             }
           ]
         }

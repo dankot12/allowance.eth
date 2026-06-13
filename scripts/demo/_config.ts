@@ -129,6 +129,11 @@ const POLICY_INPUTS = [
   { name: "policyJson", type: "string" },
 ] as const;
 
+const CHECK_WITH_APPROVAL_INPUTS = [
+  ...POLICY_INPUTS,
+  { name: "humanSig", type: "bytes" },
+] as const;
+
 export const GUARD_ABI = [
   {
     name: "simulate", type: "function", stateMutability: "view",
@@ -139,6 +144,21 @@ export const GUARD_ABI = [
     name: "check", type: "function", stateMutability: "nonpayable",
     inputs: POLICY_INPUTS,
     outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "checkWithHumanApproval", type: "function", stateMutability: "nonpayable",
+    inputs: CHECK_WITH_APPROVAL_INPUTS,
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "getApprovalDigest", type: "function", stateMutability: "view",
+    inputs: [
+      { name: "namehash_",  type: "bytes32" },
+      { name: "target",     type: "address" },
+      { name: "value",      type: "uint256" },
+      { name: "policyJson", type: "string"  },
+    ],
+    outputs: [{ name: "", type: "bytes32" }],
   },
   {
     name: "getTodaySpend", type: "function", stateMutability: "view",
@@ -153,6 +173,7 @@ export const GUARD_ABI = [
   { name: "OutsideTimeWindow",           type: "error", inputs: [{ name: "currentTime", type: "uint256" }, { name: "start", type: "uint256" }, { name: "end", type: "uint256" }] },
   { name: "ExceedsApprovalThreshold",   type: "error", inputs: [{ name: "amount", type: "uint256" }, { name: "threshold", type: "uint256" }] },
   { name: "ExceedsPerCounterpartyCap",  type: "error", inputs: [{ name: "target", type: "address" }, { name: "amount", type: "uint256" }, { name: "cap", type: "uint256" }] },
+  { name: "InvalidSignature",           type: "error", inputs: [] },
 ] as const;
 
 // ── Helpers ───────────────────────────────────────────────────

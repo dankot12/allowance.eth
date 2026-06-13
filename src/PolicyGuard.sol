@@ -11,6 +11,17 @@ pragma solidity ^0.8.20;
  *  - Every agent transaction calls `check()` passing the full JSON policy.
  *    The guard verifies the JSON hashes to the stored value, then evaluates the rules.
  *
+ * Approval threshold flow (Ledger integration):
+ *  - If a transaction exceeds the approval threshold, `check()` reverts with ExceedsApprovalThreshold.
+ *  - The agent UI surfaces this to the human (policy owner) who signs an approval message on their Ledger.
+ *  - The agent then calls `checkWithHumanApproval()` with the Ledger signature — which bypasses the
+ *    threshold gate but still enforces all other rules (daily cap, allowlist, time window).
+ *
+ * ERC-4337 paymaster flow:
+ *  - The PolicyPaymaster calls `simulate()` during validatePaymasterUserOp (no state change).
+ *  - After a successful userOp, the paymaster calls `recordSpend()` in postOp to update accumulators.
+ *  - This avoids state mutation during EIP-3074 / ERC-4337 validation phases.
+ *
  * Policy fields evaluated on-chain (all optional — omit to allow):
  *  - dailyCap:           { amount (18-decimal), token }
  *  - allowlist:          array of target addresses (if non-empty, only these are allowed)
@@ -18,9 +29,6 @@ pragma solidity ^0.8.20;
  *  - timeWindowEnd:      seconds-since-midnight UTC (0–86399)
  *  - approvalThreshold:  { amount (18-decimal), token } — reverts with NEEDS_APPROVAL above this
  *  - perCounterpartyCap: { amount (18-decimal), token }
- *
- * @dev This contract is intentionally simple — it stores minimal state and trusts the caller
- *      to pass the full policy JSON. The hash check is the trust anchor.
  */
 contract PolicyGuard {
     // ──────────────────────────────────────────────
@@ -35,6 +43,7 @@ contract PolicyGuard {
     error ExceedsApprovalThreshold(uint256 amount, uint256 threshold);
     error ExceedsPerCounterpartyCap(address target, uint256 amount, uint256 cap);
     error InvalidPolicy(string reason);
+    error InvalidSignature();
     error Unauthorized();
 
     // ──────────────────────────────────────────────
@@ -42,7 +51,9 @@ contract PolicyGuard {
     // ──────────────────────────────────────────────
 
     event PolicyUpdated(bytes32 indexed namehash, bytes32 policyHash, address updatedBy);
+    event PaymasterUpdated(bytes32 indexed namehash, address paymaster);
     event TransactionApproved(bytes32 indexed namehash, address target, uint256 value);
+    event TransactionApprovedByHuman(bytes32 indexed namehash, address target, uint256 value, address approver);
     event TransactionBlocked(bytes32 indexed namehash, address target, uint256 value, string reason);
 
     // ──────────────────────────────────────────────
@@ -60,6 +71,9 @@ contract PolicyGuard {
 
     /// @notice namehash → authorized updater (owner of the ENS name, set at registration)
     mapping(bytes32 => address) public policyOwners;
+
+    /// @notice namehash → authorized ERC-4337 paymaster (can call recordSpend in postOp)
+    mapping(bytes32 => address) public authorizedPaymasters;
 
     // ──────────────────────────────────────────────
     // Structs (passed by caller, not stored)
@@ -117,6 +131,16 @@ contract PolicyGuard {
         policyOwners[namehash_] = newOwner;
     }
 
+    /**
+     * @notice Authorize an ERC-4337 paymaster to call recordSpend() for this agent.
+     *         Only the policy owner can set this. Set to address(0) to disable.
+     */
+    function setAuthorizedPaymaster(bytes32 namehash_, address paymaster) external {
+        if (policyOwners[namehash_] != msg.sender) revert Unauthorized();
+        authorizedPaymasters[namehash_] = paymaster;
+        emit PaymasterUpdated(namehash_, paymaster);
+    }
+
     // ──────────────────────────────────────────────
     // Core enforcement
     // ──────────────────────────────────────────────
@@ -143,72 +167,71 @@ contract PolicyGuard {
         ParsedPolicy calldata policy,
         string calldata policyJson
     ) external returns (bool) {
-        // 1. Verify policy hash
-        bytes32 stored = policyHashes[namehash_];
-        if (stored == bytes32(0)) revert PolicyNotSet(namehash_);
+        _verifyPolicyHash(namehash_, policyJson);
+        _checkAllowlist(namehash_, target, value, policy);
+        _checkTimeWindow(namehash_, target, value, policy);
 
-        bytes32 got = keccak256(bytes(policyJson));
-        if (got != stored) revert PolicyHashMismatch(stored, got);
-
-        // 2. Allowlist check
-        if (policy.allowlistEnabled && policy.allowlist.length > 0) {
-            bool found = false;
-            for (uint256 i = 0; i < policy.allowlist.length; i++) {
-                if (policy.allowlist[i] == target) { found = true; break; }
-            }
-            if (!found) {
-                emit TransactionBlocked(namehash_, target, value, "TargetNotAllowlisted");
-                revert TargetNotAllowlisted(target);
-            }
-        }
-
-        // 3. Time window check
-        if (policy.timeWindow.enabled) {
-            uint256 secondsInDay = block.timestamp % 86400;
-            uint32 s = policy.timeWindow.start;
-            uint32 e = policy.timeWindow.end;
-            bool inWindow = (s <= e)
-                ? (secondsInDay >= s && secondsInDay <= e)
-                : (secondsInDay >= s || secondsInDay <= e); // wraps midnight
-            if (!inWindow) {
-                emit TransactionBlocked(namehash_, target, value, "OutsideTimeWindow");
-                revert OutsideTimeWindow(secondsInDay, s, e);
-            }
-        }
-
-        // 4. Approval threshold check (reverts with special error — caller can route to human)
+        // Approval threshold check — reverts for human routing
         if (policy.approvalThreshold.enabled && value >= policy.approvalThreshold.amount) {
             emit TransactionBlocked(namehash_, target, value, "ExceedsApprovalThreshold");
             revert ExceedsApprovalThreshold(value, policy.approvalThreshold.amount);
         }
 
-        // 5. Per-counterparty cap check
-        uint256 today = block.timestamp / 86400;
-        if (policy.perCounterpartyCap.enabled) {
-            uint256 newCounterpartySpend = counterpartySpend[namehash_][target][today] + value;
-            if (newCounterpartySpend > policy.perCounterpartyCap.amount) {
-                emit TransactionBlocked(namehash_, target, value, "ExceedsPerCounterpartyCap");
-                revert ExceedsPerCounterpartyCap(target, newCounterpartySpend, policy.perCounterpartyCap.amount);
-            }
-        }
-
-        // 6. Daily cap check
-        if (policy.dailyCap.enabled) {
-            uint256 newDailySpend = dailySpend[namehash_][today] + value;
-            if (newDailySpend > policy.dailyCap.amount) {
-                emit TransactionBlocked(namehash_, target, value, "ExceedsDailyCap");
-                revert ExceedsDailyCap(newDailySpend, policy.dailyCap.amount);
-            }
-            dailySpend[namehash_][today] = newDailySpend;
-        }
-
-        // 7. Update per-counterparty accumulator
-        if (policy.perCounterpartyCap.enabled) {
-            counterpartySpend[namehash_][target][today] += value;
-        }
+        _checkAndRecordSpend(namehash_, target, value, policy);
 
         emit TransactionApproved(namehash_, target, value);
         return true;
+    }
+
+    /**
+     * @notice Check a transaction that exceeds the approval threshold, verified by a human signature.
+     *
+     * When `check()` reverts with ExceedsApprovalThreshold, the agent surfaces this to the human
+     * (policy owner). The human signs an approval message on their Ledger device — the ERC-7730
+     * descriptor in eip7730/PolicyGuard.json renders this as human-readable clear signing.
+     * The resulting signature is passed here to bypass the threshold gate.
+     *
+     * The signature covers: keccak256(abi.encode(namehash_, target, value, keccak256(policyJson), day))
+     * Day-scoped: signature expires at UTC midnight and cannot be replayed.
+     *
+     * @param humanSig  65-byte ECDSA signature from the policy owner (Ledger device holder)
+     */
+    function checkWithHumanApproval(
+        bytes32        namehash_,
+        address        target,
+        uint256        value,
+        bytes calldata data,
+        ParsedPolicy calldata policy,
+        string calldata policyJson,
+        bytes calldata humanSig
+    ) external returns (bool) {
+        // Verify Ledger signature is from the registered policy owner
+        bytes32 digest = _approvalDigest(namehash_, target, value, policyJson);
+        address signer = _recoverSigner(digest, humanSig);
+        if (signer != policyOwners[namehash_]) revert InvalidSignature();
+
+        // Run all checks except approvalThreshold — that's what human approval bypasses
+        _verifyPolicyHash(namehash_, policyJson);
+        _checkAllowlist(namehash_, target, value, policy);
+        _checkTimeWindow(namehash_, target, value, policy);
+        _checkAndRecordSpend(namehash_, target, value, policy);
+
+        emit TransactionApprovedByHuman(namehash_, target, value, signer);
+        return true;
+    }
+
+    /**
+     * @notice Record spend without running policy checks. Only callable by the authorized paymaster.
+     *         Used by the ERC-4337 PolicyPaymaster in postOp after a successful userOp.
+     *         The paymaster validated via simulate() during validatePaymasterUserOp — this just
+     *         commits the accumulators after confirmed execution.
+     */
+    function recordSpend(bytes32 namehash_, address target, uint256 value) external {
+        if (msg.sender != authorizedPaymasters[namehash_]) revert Unauthorized();
+        uint256 today = block.timestamp / 86400;
+        dailySpend[namehash_][today] += value;
+        counterpartySpend[namehash_][target][today] += value;
+        emit TransactionApproved(namehash_, target, value);
     }
 
     /**
@@ -279,5 +302,130 @@ contract PolicyGuard {
 
     function getTodaySpend(bytes32 namehash_) external view returns (uint256) {
         return dailySpend[namehash_][block.timestamp / 86400];
+    }
+
+    /**
+     * @notice Compute the approval digest that the human (policy owner) must sign.
+     *         Useful for frontends to construct the message before calling signMessage().
+     */
+    function getApprovalDigest(
+        bytes32 namehash_,
+        address target,
+        uint256 value,
+        string calldata policyJson
+    ) external view returns (bytes32) {
+        return _approvalDigest(namehash_, target, value, policyJson);
+    }
+
+    // ──────────────────────────────────────────────
+    // Internal helpers
+    // ──────────────────────────────────────────────
+
+    function _verifyPolicyHash(bytes32 namehash_, string calldata policyJson) internal view {
+        bytes32 stored = policyHashes[namehash_];
+        if (stored == bytes32(0)) revert PolicyNotSet(namehash_);
+        bytes32 got = keccak256(bytes(policyJson));
+        if (got != stored) revert PolicyHashMismatch(stored, got);
+    }
+
+    function _checkAllowlist(
+        bytes32 namehash_,
+        address target,
+        uint256 value,
+        ParsedPolicy calldata policy
+    ) internal {
+        if (policy.allowlistEnabled && policy.allowlist.length > 0) {
+            bool found = false;
+            for (uint256 i = 0; i < policy.allowlist.length; i++) {
+                if (policy.allowlist[i] == target) { found = true; break; }
+            }
+            if (!found) {
+                emit TransactionBlocked(namehash_, target, value, "TargetNotAllowlisted");
+                revert TargetNotAllowlisted(target);
+            }
+        }
+    }
+
+    function _checkTimeWindow(
+        bytes32 namehash_,
+        address target,
+        uint256 value,
+        ParsedPolicy calldata policy
+    ) internal {
+        if (policy.timeWindow.enabled) {
+            uint256 secondsInDay = block.timestamp % 86400;
+            uint32 s = policy.timeWindow.start;
+            uint32 e = policy.timeWindow.end;
+            bool inWindow = (s <= e)
+                ? (secondsInDay >= s && secondsInDay <= e)
+                : (secondsInDay >= s || secondsInDay <= e);
+            if (!inWindow) {
+                emit TransactionBlocked(namehash_, target, value, "OutsideTimeWindow");
+                revert OutsideTimeWindow(secondsInDay, s, e);
+            }
+        }
+    }
+
+    function _checkAndRecordSpend(
+        bytes32 namehash_,
+        address target,
+        uint256 value,
+        ParsedPolicy calldata policy
+    ) internal {
+        uint256 today = block.timestamp / 86400;
+
+        if (policy.perCounterpartyCap.enabled) {
+            uint256 newCounterpartySpend = counterpartySpend[namehash_][target][today] + value;
+            if (newCounterpartySpend > policy.perCounterpartyCap.amount) {
+                emit TransactionBlocked(namehash_, target, value, "ExceedsPerCounterpartyCap");
+                revert ExceedsPerCounterpartyCap(target, newCounterpartySpend, policy.perCounterpartyCap.amount);
+            }
+        }
+
+        if (policy.dailyCap.enabled) {
+            uint256 newDailySpend = dailySpend[namehash_][today] + value;
+            if (newDailySpend > policy.dailyCap.amount) {
+                emit TransactionBlocked(namehash_, target, value, "ExceedsDailyCap");
+                revert ExceedsDailyCap(newDailySpend, policy.dailyCap.amount);
+            }
+            dailySpend[namehash_][today] = newDailySpend;
+        }
+
+        if (policy.perCounterpartyCap.enabled) {
+            counterpartySpend[namehash_][target][today] += value;
+        }
+    }
+
+    /**
+     * @dev Builds the personal_sign approval digest.
+     *      Matches viem's signMessage({ message: { raw: structHash } }) output.
+     *      Day-scoped so signatures expire at UTC midnight.
+     */
+    function _approvalDigest(
+        bytes32 namehash_,
+        address target,
+        uint256 value,
+        string calldata policyJson
+    ) internal view returns (bytes32) {
+        bytes32 policyHash = keccak256(bytes(policyJson));
+        uint256 day = block.timestamp / 86400;
+        bytes32 structHash = keccak256(abi.encode(namehash_, target, value, policyHash, day));
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", structHash));
+    }
+
+    function _recoverSigner(bytes32 messageHash, bytes calldata sig) internal pure returns (address) {
+        if (sig.length != 65) revert InvalidSignature();
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+        assembly {
+            r := calldataload(sig.offset)
+            s := calldataload(add(sig.offset, 32))
+            v := byte(0, calldataload(add(sig.offset, 64)))
+        }
+        if (v < 27) v += 27;
+        address signer = ecrecover(messageHash, v, r, s);
+        if (signer == address(0)) revert InvalidSignature();
+        return signer;
     }
 }

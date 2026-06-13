@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Shield, ArrowRight, Zap, Lock, Globe, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Shield, Zap, Lock, Globe, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 import { publicClient, ENS_PUBLIC_RESOLVER, RESOLVER_ABI } from "@/lib/ensClient";
 import { namehash } from "viem";
@@ -9,26 +9,41 @@ import Navbar from "./components/Navbar";
 import PolicyEditor from "./components/PolicyEditor";
 import PolicyCard from "./components/PolicyCard";
 import PublishPanel from "./components/PublishPanel";
+import AgentSimulator from "./components/AgentSimulator";
+import PolicyDiff from "./components/PolicyDiff";
+import DeployChecklist from "./components/DeployChecklist";
 import type { AllowancePolicy } from "@/lib/policySchema";
 
-// Forward resolution: addr(namehash(name)) on the configured resolver.
-// Works for CCIP-Read names (like traderbot.eth) where reverse lookup fails.
+const SAVED_NAMES_KEY = "allowance_ens_names";
+
+function getSavedNames(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(SAVED_NAMES_KEY) || "[]") as string[];
+  } catch {
+    return [];
+  }
+}
+
+function addSavedName(name: string) {
+  const names = Array.from(new Set([name, ...getSavedNames()])).slice(0, 10);
+  localStorage.setItem(SAVED_NAMES_KEY, JSON.stringify(names));
+  return names;
+}
+
+// Forward-verify: addr(namehash(name)) on the CCIP resolver must match wallet
 async function resolveEnsToAddress(name: string): Promise<string | null> {
   try {
-    const node = namehash(name);
     const addr = await publicClient.readContract({
       address: ENS_PUBLIC_RESOLVER,
       abi: RESOLVER_ABI,
       functionName: "addr",
-      args: [node],
+      args: [namehash(name)],
     });
     return (addr as string) || null;
   } catch {
     return null;
   }
 }
-
-// ─── Main page ───────────────────────────────────────────────
 
 type VerifyStatus = "idle" | "checking" | "valid" | "invalid";
 
@@ -38,14 +53,19 @@ export default function Home() {
   const [policy, setPolicy] = useState<AllowancePolicy | null>(null);
   const [ensName, setEnsName] = useState("");
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("idle");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [savedNames, setSavedNames] = useState<string[]>([]);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [lastPublishedJson, setLastPublishedJson] = useState("");
   const verifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => { setMounted(true); }, []);
 
-  // Forward-verify the typed name: addr(namehash(name)) must match wallet
+  // Load saved names on mount
+  useEffect(() => {
+    setSavedNames(getSavedNames());
+  }, []);
+
+  // Forward-verify on name change
   useEffect(() => {
     if (verifyTimer.current) clearTimeout(verifyTimer.current);
     const wallet = primaryWallet?.address;
@@ -56,158 +76,107 @@ export default function Home() {
     setVerifyStatus("checking");
     verifyTimer.current = setTimeout(async () => {
       const resolved = await resolveEnsToAddress(ensName);
-      if (resolved && resolved.toLowerCase() === wallet.toLowerCase()) {
-        setVerifyStatus("valid");
-      } else {
-        setVerifyStatus("invalid");
-      }
+      setVerifyStatus(
+        resolved && resolved.toLowerCase() === wallet.toLowerCase() ? "valid" : "invalid"
+      );
     }, 600);
     return () => { if (verifyTimer.current) clearTimeout(verifyTimer.current); };
   }, [ensName, primaryWallet?.address]);
 
-  // On wallet connect, pre-fill suggestions from localStorage + try reverse lookup
+  // On wallet connect, pre-fill first saved name
   useEffect(() => {
     if (!primaryWallet?.address) {
       setEnsName("");
-      setSuggestions([]);
       setVerifyStatus("idle");
       return;
     }
-    // Load previously verified names from localStorage
-    const stored = JSON.parse(localStorage.getItem("ens_suggestions") || "[]") as string[];
-    setSuggestions(stored);
-    // Try reverse resolution as a bonus — won't work for CCIP names but fine if it does
+    const names = getSavedNames();
+    setSavedNames(names);
+    if (!ensName && names.length > 0) setEnsName(names[0]);
+    // Background reverse lookup bonus
     publicClient.getEnsName({ address: primaryWallet.address as `0x${string}` })
-      .then((n) => {
-        if (n && n.includes(".")) {
-          setSuggestions((prev) => Array.from(new Set([n, ...prev])));
-          if (!ensName) setEnsName(n);
-        }
-      })
+      .then((n) => { if (n?.includes(".")) setSavedNames((prev) => Array.from(new Set([n, ...prev]))); })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primaryWallet?.address]);
 
-  // Persist verified names to localStorage
-  useEffect(() => {
-    if (verifyStatus === "valid" && ensName) {
-      setSuggestions((prev) => {
-        const next = Array.from(new Set([ensName, ...prev])).slice(0, 10);
-        localStorage.setItem("ens_suggestions", JSON.stringify(next));
-        return next;
-      });
-    }
-  }, [verifyStatus, ensName]);
+  const handlePublished = useCallback((name: string) => {
+    const updated = addSavedName(name);
+    setSavedNames(updated);
+    setLastPublishedJson(policy ? JSON.stringify(policy) : "");
+    setChecklistOpen(true);
+  }, [policy]);
 
   const connectedWallet = mounted ? primaryWallet : null;
-  const isSubname = ensName.split(".").length > 2;
 
   return (
     <div className="min-h-screen">
       <Navbar />
 
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-12">
-        {/* Hero */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-600/15 border border-brand-500/30 text-brand-300 text-xs font-medium mb-6">
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-12">
+        {/* Compact header */}
+        <div className="flex items-center gap-3 mb-8">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-600/15 border border-brand-500/30 text-brand-300 text-xs font-medium">
             <Zap className="w-3 h-3" />
-            ENS · PolicyGuard · ERC-7730 Clear Signing
+            ENS · PolicyGuard · ERC-7730 · Dynamic
           </div>
-
-          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-4 leading-tight">
-            Spending rules that travel{" "}
-            <span
-              className="text-transparent bg-clip-text"
-              style={{
-                backgroundImage: "linear-gradient(135deg, #a78bff 0%, #7c3aed 50%, #06b6d4 100%)",
-              }}
-            >
-              with your agent
-            </span>
-          </h1>
-
-          <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-            Define what your AI agent is allowed to spend — in plain English.
-            Published to ENS. Enforced on-chain. Move the name, move the rules.
-          </p>
+          <div className="flex items-center gap-3 ml-auto">
+            {[
+              { icon: Globe, label: "ENS" },
+              { icon: Lock, label: "On-chain" },
+              { icon: Shield, label: "Ledger" },
+            ].map(({ icon: Icon, label }) => (
+              <div key={label} className="hidden sm:flex items-center gap-1 text-gray-600 text-xs">
+                <Icon className="w-3 h-3 text-brand-500" />
+                {label}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Feature pills */}
-        <div className="flex flex-wrap justify-center gap-3 mb-14">
-          {[
-            { icon: Globe, label: "Stored on ENS" },
-            { icon: Lock, label: "On-chain enforcement" },
-            { icon: Shield, label: "Ledger Clear Signing" },
-            { icon: Zap, label: "AI-assisted authoring" },
-          ].map(({ icon: Icon, label }) => (
-            <div
-              key={label}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-100 border border-surface-300 text-gray-400 text-xs"
-            >
-              <Icon className="w-3 h-3 text-brand-400" />
-              {label}
-            </div>
-          ))}
-        </div>
+        <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
+          Spending rules that travel{" "}
+          <span className="text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(135deg, #a78bff 0%, #7c3aed 50%, #06b6d4 100%)" }}>
+            with your agent
+          </span>
+        </h1>
+        <p className="text-gray-500 text-sm mb-8">
+          Define what your AI agent can spend. Published to ENS. Enforced on-chain. Move the name, move the rules.
+        </p>
 
         {/* Main layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          {/* Left — Editor */}
-          <div className="lg:col-span-2 space-y-5">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+          {/* Left — ENS name + editor */}
+          <div className="lg:col-span-2 space-y-4">
 
-            {/* ENS name input */}
-            <div className="card p-5">
+            {/* ENS name */}
+            <div className="card p-4">
               <label className="label mb-2 block">Agent ENS name</label>
               <div className="relative">
                 <input
-                  ref={inputRef}
+                  list="ens-saved-names"
                   className="input-field font-mono pr-10"
                   placeholder="yourname.eth"
                   value={ensName}
                   disabled={!connectedWallet}
-                  onChange={(e) => {
-                    setEnsName(e.target.value);
-                    setShowSuggestions(true);
-                  }}
-                  onFocus={() => setShowSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  onChange={(e) => setEnsName(e.target.value)}
                 />
+                <datalist id="ens-saved-names">
+                  {savedNames.map((n) => <option key={n} value={n} />)}
+                </datalist>
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
                   {verifyStatus === "checking" && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
-                  {verifyStatus === "valid" && <CheckCircle2 className="w-4 h-4 text-success" />}
-                  {verifyStatus === "invalid" && <AlertCircle className="w-4 h-4 text-danger" />}
+                  {verifyStatus === "valid"    && <CheckCircle2 className="w-4 h-4 text-success" />}
+                  {verifyStatus === "invalid"  && <AlertCircle  className="w-4 h-4 text-danger" />}
                 </div>
-
-                {/* Suggestions dropdown */}
-                {showSuggestions && suggestions.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full card border border-surface-400/50 shadow-glow-sm overflow-hidden">
-                    {suggestions.map((s) => {
-                      const sub = s.split(".").length > 2;
-                      return (
-                        <button
-                          key={s}
-                          className={`w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-surface-300/50 transition-colors ${ensName === s ? "bg-brand-600/15" : ""}`}
-                          onMouseDown={() => { setEnsName(s); setShowSuggestions(false); }}
-                        >
-                          <span className="font-mono text-sm text-white flex-1 truncate">{s}</span>
-                          <span className={`badge flex-shrink-0 ${sub ? "badge-info" : "badge-muted"}`}>
-                            {sub ? "subname" : "parent"}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
-              <p className={`text-xs mt-1.5 ${verifyStatus === "invalid" ? "text-danger" : "text-gray-600"}`}>
+              <p className={`text-xs mt-1 ${verifyStatus === "invalid" ? "text-danger" : "text-gray-600"}`}>
                 {!connectedWallet
                   ? "Connect your wallet first."
-                  : verifyStatus === "checking"
-                  ? "Verifying name resolves to your wallet…"
-                  : verifyStatus === "valid"
-                  ? (isSubname ? "✓ Subname verified — policy scoped to this agent." : "✓ Name verified — resolves to your wallet.")
-                  : verifyStatus === "invalid"
-                  ? "This name doesn't resolve to your connected wallet."
+                  : verifyStatus === "checking" ? "Verifying…"
+                  : verifyStatus === "valid"    ? "✓ Resolves to your wallet."
+                  : verifyStatus === "invalid"  ? "This name doesn't resolve to your wallet."
+                  : savedNames.length > 0       ? "Select a saved name or type a new one."
                   : "Type your ENS name (e.g. traderbot.eth)"}
               </p>
             </div>
@@ -223,11 +192,15 @@ export default function Home() {
               </div>
               <PolicyEditor value={policy} onChange={setPolicy} />
             </div>
+
+            <PolicyDiff ensName={ensName} localPolicy={policy} />
           </div>
 
-          {/* Right — Publish + Preview */}
-          <div className="space-y-5">
-            <PublishPanel policy={policy} ensName={ensName} />
+          {/* Right — publish + simulate + preview */}
+          <div className="space-y-4">
+            <PublishPanel policy={policy} ensName={ensName} onPublished={handlePublished} />
+
+            <AgentSimulator ensName={ensName} policy={policy} />
 
             {policy && (
               <div>
@@ -235,46 +208,28 @@ export default function Home() {
                 <PolicyCard policy={policy} ensName={ensName} />
               </div>
             )}
-
-            <div className="card p-4 border-brand-700/40">
-              <p className="label mb-3">How it works</p>
-              <div className="space-y-3">
-                {[
-                  { step: "1", text: "Author policy in English or JSON" },
-                  { step: "2", text: "AI translates → validates against schema" },
-                  { step: "3", text: "JSON → ENS text record" },
-                  { step: "4", text: "keccak256 hash → PolicyGuard.sol" },
-                  { step: "5", text: "Every agent tx calls check() on-chain" },
-                ].map(({ step, text }) => (
-                  <div key={step} className="flex items-start gap-2.5">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-brand-600/20 border border-brand-500/30 text-brand-300 text-xs flex items-center justify-center font-medium">
-                      {step}
-                    </span>
-                    <p className="text-xs text-gray-400 pt-0.5">{text}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-surface-300/40 mt-8">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <DeployChecklist
+        ensName={ensName}
+        policyJson={lastPublishedJson}
+        isOpen={checklistOpen}
+        onClose={() => setChecklistOpen(false)}
+      />
+
+      <footer className="border-t border-surface-300/40">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between">
           <p className="text-xs text-gray-600">
             Built with ENS · Dynamic · Ledger Clear Signing · Anthropic Claude
           </p>
-          <div className="flex items-center gap-4">
-            <a href="https://github.com" target="_blank" rel="noopener noreferrer"
-              className="text-xs text-gray-500 hover:text-brand-300 transition-colors flex items-center gap-1">
-              GitHub <ArrowRight className="w-3 h-3" />
-            </a>
-            <a href="/profile"
-              className="text-xs text-gray-500 hover:text-brand-300 transition-colors flex items-center gap-1">
-              ENS Profile <ArrowRight className="w-3 h-3" />
-            </a>
-          </div>
+          <a
+            href="/agent"
+            className="text-xs text-gray-500 hover:text-brand-300 transition-colors"
+          >
+            Agent Activity Log →
+          </a>
         </div>
       </footer>
     </div>

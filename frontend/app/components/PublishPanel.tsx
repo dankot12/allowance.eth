@@ -15,7 +15,7 @@ import {
   POLICY_GUARD_ADDRESS,
   POLICY_GUARD_ABI,
   POLICY_ENS_KEY,
-  ENS_PUBLIC_RESOLVER,
+  publicClient,
 } from "@/lib/ensClient";
 
 const RESOLVER_ABI = parseAbi([
@@ -26,32 +26,34 @@ const RESOLVER_ABI = parseAbi([
 interface PublishPanelProps {
   policy: AllowancePolicy | null;
   ensName: string;
+  onPublished?: (ensName: string) => void;
 }
 
-type PublishStep = "idle" | "approving" | "setting-ens" | "registering-guard" | "done" | "error";
+type PublishStep = "idle" | "setting-ens" | "registering-guard" | "done" | "error";
 type VerifyState = "idle" | "checking" | "found" | "not-found";
 
-export default function PublishPanel({ policy, ensName }: PublishPanelProps) {
+export default function PublishPanel({ policy, ensName, onPublished }: PublishPanelProps) {
   const { primaryWallet } = useDynamicContext();
 
   const [copied, setCopied] = useState(false);
   const [publishStep, setPublishStep] = useState<PublishStep>("idle");
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [ensWarning, setEnsWarning] = useState<string | null>(null);
   const [ensTxHash, setEnsTxHash] = useState<Hash | null>(null);
   const [guardTxHash, setGuardTxHash] = useState<Hash | null>(null);
   const [verifyState, setVerifyState] = useState<VerifyState>("idle");
   const [livePolicy, setLivePolicy] = useState<string | null>(null);
 
-  const policyJson = policy ? JSON.stringify(policy, null, 2) : null;
   const policyJsonMinified = policy ? JSON.stringify(policy) : null;
   const policyHash = policyJsonMinified ? computePolicyHash(policyJsonMinified) : null;
 
   const canAct = !!policy && !!ensName.trim() && !!primaryWallet;
+  const guardDeployed = POLICY_GUARD_ADDRESS !== "0x0000000000000000000000000000000000000000";
 
-  // Reset on name/policy change
   useEffect(() => {
     setPublishStep("idle");
     setPublishError(null);
+    setEnsWarning(null);
     setEnsTxHash(null);
     setGuardTxHash(null);
     setVerifyState("idle");
@@ -73,8 +75,9 @@ export default function PublishPanel({ policy, ensName }: PublishPanelProps) {
       return;
     }
 
-    setPublishStep("approving");
+    setPublishStep("setting-ens");
     setPublishError(null);
+    setEnsWarning(null);
     setEnsTxHash(null);
     setGuardTxHash(null);
 
@@ -87,19 +90,35 @@ export default function PublishPanel({ policy, ensName }: PublishPanelProps) {
       const policyStr = JSON.stringify(policy);
       const hash = computePolicyHash(policyStr);
 
-      // Step 1 — setText on ENS resolver
-      setPublishStep("setting-ens");
-      const ensTx = await walletClient.writeContract({
-        address: ENS_PUBLIC_RESOLVER,
-        abi: RESOLVER_ABI,
-        functionName: "setText",
-        args: [node, POLICY_ENS_KEY, policyStr],
-        account,
-      });
-      setEnsTxHash(ensTx);
+      // Step 1 — setText on the ENS name's actual resolver (looked up dynamically)
+      try {
+        const resolverAddress = await publicClient.getEnsResolver({ name: ensName });
+        if (!resolverAddress || resolverAddress === "0x0000000000000000000000000000000000000000") {
+          throw new Error("No resolver found for this ENS name on Sepolia");
+        }
+        const ensTx = await walletClient.writeContract({
+          address: resolverAddress,
+          abi: RESOLVER_ABI,
+          functionName: "setText",
+          args: [node, POLICY_ENS_KEY, policyStr],
+          account,
+        });
+        setEnsTxHash(ensTx);
+      } catch (ensErr: unknown) {
+        const msg = ensErr instanceof Error ? ensErr.message : String(ensErr);
+        if (msg.includes("0x4b27a133") || msg.toLowerCase().includes("offchaindatabase")) {
+          // CCIP-Write: off-chain resolver — continue to PolicyGuard anyway
+          setEnsWarning(
+            "ENS text record requires ENS Explorer (off-chain resolver). Copy the JSON and set it manually. PolicyGuard hash will still be registered below."
+          );
+        } else {
+          // Real error — still try PolicyGuard
+          setEnsWarning(`ENS write failed: ${msg.slice(0, 100)}. Continuing with PolicyGuard registration.`);
+        }
+      }
 
-      // Step 2 — register hash on PolicyGuard
-      if (POLICY_GUARD_ADDRESS !== "0x0000000000000000000000000000000000000000") {
+      // Step 2 — register hash on PolicyGuard (always proceed, even if ENS setText failed)
+      if (guardDeployed) {
         setPublishStep("registering-guard");
         const guardTx = await walletClient.writeContract({
           address: POLICY_GUARD_ADDRESS,
@@ -112,16 +131,10 @@ export default function PublishPanel({ policy, ensName }: PublishPanelProps) {
       }
 
       setPublishStep("done");
+      onPublished?.(ensName);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      // CCIP-Write revert: 0x4b27a133 StorageHandledByOffChainDatabase
-      if (msg.includes("0x4b27a133") || msg.toLowerCase().includes("offchaindatabase")) {
-        setPublishError(
-          "This ENS name uses an off-chain (CCIP) resolver — setText must be done via ENS Explorer manually."
-        );
-      } else {
-        setPublishError(msg);
-      }
+      setPublishError(msg.slice(0, 200));
       setPublishStep("error");
     }
   };
@@ -139,114 +152,83 @@ export default function PublishPanel({ policy, ensName }: PublishPanelProps) {
     }
   };
 
-  const ensExplorerUrl = `https://explorer.ens.dev/${ensName || ""}`;
-
-  const isPublishing =
-    publishStep === "approving" ||
-    publishStep === "setting-ens" ||
-    publishStep === "registering-guard";
+  const ensExplorerUrl = `https://app.ens.domains/${ensName}?tab=records`;
+  const isPublishing = publishStep === "setting-ens" || publishStep === "registering-guard";
 
   const publishLabel = {
-    idle: "Publish to ENS",
-    approving: "Waiting for approval…",
+    idle: "Publish to ENS + PolicyGuard",
     "setting-ens": "Setting ENS record…",
-    "registering-guard": "Registering hash on PolicyGuard…",
+    "registering-guard": "Registering hash on-chain…",
     done: "Published",
     error: "Retry publish",
   }[publishStep];
 
   return (
     <div className="card p-5 space-y-4">
-      <h3 className="font-semibold text-white">Publish to ENS</h3>
-
-      {/* Target */}
-      <div className="p-3 rounded-xl bg-surface-200/50 border border-surface-300/50 space-y-1">
-        <p className="label">Target ENS name</p>
-        <p className="font-mono text-sm text-white">{ensName || "—"}</p>
-        <p className="text-xs text-gray-500">
-          Key: <code className="text-brand-300">{POLICY_ENS_KEY}</code>
-        </p>
-        <p className="text-[10px] font-mono text-gray-600 truncate" title={ENS_PUBLIC_RESOLVER}>
-          Resolver: {ENS_PUBLIC_RESOLVER}
-        </p>
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-white">Publish Policy</h3>
+        {policyHash && (
+          <div className="flex items-center gap-1">
+            <button onClick={copyJson} className="p-1.5 rounded-lg bg-surface-300/60 hover:bg-surface-400/60 transition-colors" title="Copy JSON">
+              {copied ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3 text-gray-400" />}
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Policy JSON */}
-      <div className="space-y-1.5">
-        <p className="label">Policy JSON</p>
-        <div className="relative">
-          <pre
-            className={`text-[10px] font-mono leading-relaxed p-3 rounded-xl bg-surface-200/60 border border-surface-300/50 overflow-auto max-h-40 text-gray-300 ${
-              !policy ? "opacity-40" : ""
-            }`}
-          >
-            {policyJson ?? "Author a policy first"}
-          </pre>
-          {policy && (
-            <button
-              onClick={copyJson}
-              className="absolute top-2 right-2 p-1.5 rounded-lg bg-surface-300/60 hover:bg-surface-400/60 transition-colors"
-              title="Copy JSON"
-            >
-              {copied ? (
-                <Check className="w-3.5 h-3.5 text-success" />
-              ) : (
-                <Copy className="w-3.5 h-3.5 text-gray-400" />
-              )}
-            </button>
-          )}
+      <div className="p-3 rounded-xl bg-surface-200/50 border border-surface-300/50 space-y-1">
+        <div className="flex items-center justify-between">
+          <p className="font-mono text-sm text-white">{ensName || "—"}</p>
+          <span className="badge badge-muted text-[10px]">{POLICY_ENS_KEY}</span>
         </div>
         {policyHash && (
           <p className="text-[10px] font-mono text-gray-600 truncate" title={policyHash}>
-            keccak256: {policyHash}
+            hash: {policyHash.slice(0, 18)}…
           </p>
         )}
       </div>
 
-      {/* Publish button */}
       <button
         className={`btn-primary w-full justify-center ${publishStep === "done" ? "opacity-70" : ""}`}
         disabled={!canAct || isPublishing || publishStep === "done"}
         onClick={publish}
       >
-        {isPublishing ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
-        ) : (
-          <Send className="w-4 h-4" />
-        )}
+        {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         {publishLabel}
       </button>
 
-      {/* Tx receipts */}
-      {(ensTxHash || guardTxHash) && (
-        <div className="space-y-1.5">
-          {ensTxHash && (
-            <TxLink label="ENS setText" hash={ensTxHash} />
-          )}
-          {guardTxHash && (
-            <TxLink label="PolicyGuard.updatePolicy" hash={guardTxHash} />
-          )}
+      {/* ENS warning (non-fatal) */}
+      {ensWarning && (
+        <div className="space-y-2">
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-warning/10 border border-warning/20 text-xs text-warning">
+            <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <p>{ensWarning}</p>
+          </div>
+          <a
+            href={ensExplorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between p-2.5 rounded-xl border bg-brand-600/10 border-brand-500/30 text-brand-300 hover:bg-brand-600/20 transition-colors text-xs"
+          >
+            <span>Open {ensName} on ENS App → Records</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
       )}
 
       {/* Error */}
       {publishStep === "error" && publishError && (
-        <div className="space-y-2">
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10 border border-danger/20 text-sm text-danger">
-            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <p className="text-xs">{publishError}</p>
-          </div>
-          {publishError.includes("off-chain") && (
-            <a
-              href={ensExplorerUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-between p-3 rounded-xl border bg-brand-600/10 border-brand-500/30 text-brand-300 hover:bg-brand-600/20 transition-colors"
-            >
-              <span className="text-sm">Open {ensName} on ENS Explorer</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          )}
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-danger/10 border border-danger/20 text-xs text-danger">
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+          <p>{publishError}</p>
+        </div>
+      )}
+
+      {/* Tx receipts */}
+      {(ensTxHash || guardTxHash) && (
+        <div className="space-y-1.5">
+          {ensTxHash && <TxLink label="ENS setText" hash={ensTxHash} />}
+          {guardTxHash && <TxLink label="PolicyGuard.updatePolicy" hash={guardTxHash} />}
         </div>
       )}
 
@@ -254,41 +236,39 @@ export default function PublishPanel({ policy, ensName }: PublishPanelProps) {
       {publishStep === "done" && (
         <div className="flex items-center gap-2 p-3 rounded-xl bg-success/10 border border-success/20 text-sm text-success">
           <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-          Policy published. Verify below to confirm it&apos;s live.
+          {guardTxHash && !ensTxHash
+            ? "PolicyGuard hash registered. Set ENS text record via ENS App."
+            : "Policy published and hash registered on-chain."}
         </div>
       )}
 
       {/* Verify */}
       <div className="space-y-2 pt-1 border-t border-surface-300/30">
-        <p className="label">Verify on-chain</p>
         <button
-          className="btn-secondary w-full justify-center"
-          disabled={!canAct || verifyState === "checking"}
+          className="btn-secondary w-full justify-center text-xs"
+          disabled={!ensName.trim() || verifyState === "checking"}
           onClick={verify}
         >
-          {verifyState === "checking" ? (
-            <><Loader2 className="w-4 h-4 animate-spin" />Checking…</>
-          ) : (
-            <><RefreshCw className="w-4 h-4" />Read ENS record</>
-          )}
+          {verifyState === "checking"
+            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Checking…</>
+            : <><RefreshCw className="w-3.5 h-3.5" />Verify ENS record</>}
         </button>
 
         {verifyState === "found" && (
-          <div className="space-y-2 p-3 rounded-xl bg-success/10 border border-success/20">
-            <p className="text-sm font-semibold text-success flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4" />
-              Record found
+          <div className="space-y-1.5 p-3 rounded-xl bg-success/10 border border-success/20">
+            <p className="text-xs font-semibold text-success flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Record found in ENS
             </p>
-            <pre className="text-[10px] font-mono text-gray-400 overflow-auto max-h-24 leading-relaxed">
+            <pre className="text-[10px] font-mono text-gray-400 overflow-auto max-h-20 leading-relaxed">
               {livePolicy}
             </pre>
           </div>
         )}
 
         {verifyState === "not-found" && (
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-warning/10 border border-warning/20 text-sm text-warning">
-            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <p>No record found yet.</p>
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-warning/10 border border-warning/20 text-xs text-warning">
+            <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            No record found yet — it may take a moment to propagate.
           </div>
         )}
       </div>

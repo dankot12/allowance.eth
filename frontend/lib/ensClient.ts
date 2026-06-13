@@ -54,8 +54,65 @@ export const POLICY_GUARD_ABI = parseAbi([
   "function updatePolicy(bytes32 namehash, bytes32 policyHash) external",
   "function getPolicyHash(bytes32 namehash) external view returns (bytes32)",
   "function getTodaySpend(bytes32 namehash) external view returns (uint256)",
-  "function simulate(bytes32 namehash, address target, uint256 value, bytes data, (uint256 amount, bool enabled) dailyCap, (uint256 amount, bool enabled) approvalThreshold, (uint256 amount, bool enabled) perCounterpartyCap, (uint32 start, uint32 end, bool enabled) timeWindow, address[] allowlist, bool allowlistEnabled, string policyJson) external view returns (bool allowed, string reason)",
+  "function policyOwners(bytes32 namehash) external view returns (address)",
 ]);
+
+// Full ABI with ParsedPolicy tuple — used by AgentSimulator for simulate/checkWithHumanApproval
+const CAP_ABI      = { type: "tuple" as const, components: [{ name: "amount", type: "uint256" as const }, { name: "enabled", type: "bool" as const }] };
+const TIMEWIN_ABI  = { type: "tuple" as const, components: [{ name: "start", type: "uint32" as const }, { name: "end", type: "uint32" as const }, { name: "enabled", type: "bool" as const }] };
+const POLICY_TUPLE = {
+  name: "policy", type: "tuple" as const,
+  components: [
+    { name: "dailyCap",           ...CAP_ABI  },
+    { name: "approvalThreshold",  ...CAP_ABI  },
+    { name: "perCounterpartyCap", ...CAP_ABI  },
+    { name: "timeWindow",         ...TIMEWIN_ABI },
+    { name: "allowlist",          type: "address[]" as const },
+    { name: "allowlistEnabled",   type: "bool" as const },
+  ],
+} as const;
+
+const POLICY_INPUTS = [
+  { name: "namehash_",  type: "bytes32" as const },
+  { name: "target",     type: "address" as const },
+  { name: "value",      type: "uint256" as const },
+  { name: "data",       type: "bytes"   as const },
+  POLICY_TUPLE,
+  { name: "policyJson", type: "string"  as const },
+] as const;
+
+export const POLICY_GUARD_FULL_ABI = [
+  {
+    name: "simulate", type: "function" as const, stateMutability: "view" as const,
+    inputs: POLICY_INPUTS,
+    outputs: [{ name: "allowed", type: "bool" as const }, { name: "reason", type: "string" as const }],
+  },
+  {
+    name: "checkWithHumanApproval", type: "function" as const, stateMutability: "nonpayable" as const,
+    inputs: [...POLICY_INPUTS, { name: "humanSig", type: "bytes" as const }],
+    outputs: [{ name: "", type: "bool" as const }],
+  },
+  {
+    name: "getApprovalDigest", type: "function" as const, stateMutability: "view" as const,
+    inputs: [
+      { name: "namehash_",  type: "bytes32" as const },
+      { name: "target",     type: "address" as const },
+      { name: "value",      type: "uint256" as const },
+      { name: "policyJson", type: "string"  as const },
+    ],
+    outputs: [{ name: "", type: "bytes32" as const }],
+  },
+  {
+    name: "updatePolicy", type: "function" as const, stateMutability: "nonpayable" as const,
+    inputs: [{ name: "namehash_", type: "bytes32" as const }, { name: "policyHash", type: "bytes32" as const }],
+    outputs: [],
+  },
+  {
+    name: "getTodaySpend", type: "function" as const, stateMutability: "view" as const,
+    inputs: [{ name: "namehash_", type: "bytes32" as const }],
+    outputs: [{ name: "", type: "uint256" as const }],
+  },
+] as const;
 
 // ─────────────────────────────────────────────────────────────
 // Read helpers
