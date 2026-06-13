@@ -21,3 +21,10 @@ docs/
 
 # Node Modules
 node_modules/
+
+# frontend build output
+frontend/build/
+frontend/dist/
+frontend/node_modules/
+frontend/.out/
+frontend/.next/
