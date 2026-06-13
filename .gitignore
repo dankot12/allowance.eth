@@ -18,3 +18,9 @@ docs/
 .env
 .env.*
 !.env.example
+
+# Node Modules
+node_modules/
+
+# lib/forge-std
+lib/forge-std/**/*
