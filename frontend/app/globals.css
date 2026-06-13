@@ -1,0 +1,193 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ───────────────────────────────────────────────
+   Base
+─────────────────────────────────────────────── */
+:root {
+  --surface-0: #08080f;
+  --surface-50: #0d0d1a;
+  --surface-100: #111128;
+  --surface-200: #16163a;
+  --surface-300: #1e1e50;
+  --surface-400: #2a2a6e;
+  --brand: #7c3aed;
+  --brand-light: #a78bff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--surface-0);
+  color: #e2e2f0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ───────────────────────────────────────────────
+   Scrollbar styling
+─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface-50); }
+::-webkit-scrollbar-thumb { background: var(--surface-400); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--brand); }
+
+/* ───────────────────────────────────────────────
+   Selection
+─────────────────────────────────────────────── */
+::selection {
+  background: rgba(124, 58, 237, 0.4);
+  color: #fff;
+}
+
+/* ───────────────────────────────────────────────
+   Components
+─────────────────────────────────────────────── */
+@layer components {
+  /* Card */
+  .card {
+    @apply bg-surface-50 border border-surface-300 rounded-2xl;
+    background-image: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 50%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200;
+  }
+  .card-hover:hover {
+    @apply border-surface-400;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 32px rgba(0,0,0,0.5), 0 0 20px rgba(124,58,237,0.15);
+  }
+
+  /* Glow border card */
+  .card-glow {
+    @apply card;
+    border-color: rgba(124,58,237,0.5);
+    box-shadow: 0 0 20px rgba(124,58,237,0.2), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  /* Button variants */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm
+           bg-brand-500 text-white transition-all duration-150
+           hover:bg-brand-400 active:scale-95;
+    box-shadow: 0 0 16px rgba(124,58,237,0.4);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 0 24px rgba(124,58,237,0.6);
+  }
+  .btn-primary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+    box-shadow: none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm
+           bg-surface-200 border border-surface-300 text-gray-300
+           transition-all duration-150 hover:border-surface-400 hover:text-white
+           active:scale-95;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
+           text-gray-400 transition-all duration-150 hover:text-white hover:bg-surface-200
+           active:scale-95;
+  }
+
+  /* Input */
+  .input-field {
+    @apply w-full bg-surface-200 border border-surface-300 rounded-xl px-4 py-3
+           text-gray-100 text-sm placeholder-gray-600
+           focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-400/30
+           transition-all duration-150;
+  }
+
+  .textarea-field {
+    @apply input-field resize-none font-mono text-xs leading-relaxed;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-success { @apply badge bg-success/15 text-success border border-success/20; }
+  .badge-danger  { @apply badge bg-danger/15 text-danger border border-danger/20; }
+  .badge-warning { @apply badge bg-warning/15 text-warning border border-warning/20; }
+  .badge-info    { @apply badge bg-info/15 text-info border border-info/20; }
+  .badge-muted   { @apply badge bg-surface-200 text-gray-400 border border-surface-300; }
+
+  /* Tag */
+  .tag {
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono
+           bg-surface-200 text-brand-300 border border-brand-900/50;
+  }
+
+  /* Section label */
+  .label {
+    @apply text-xs font-medium text-gray-500 uppercase tracking-wider;
+  }
+
+  /* Divider */
+  .divider {
+    @apply border-t border-surface-300;
+  }
+
+  /* Shimmer loading */
+  .shimmer {
+    background: linear-gradient(90deg, var(--surface-100) 25%, var(--surface-200) 50%, var(--surface-100) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Glow dot status indicator */
+  .status-dot {
+    @apply inline-block w-2 h-2 rounded-full;
+  }
+  .status-dot-active {
+    @apply status-dot bg-success;
+    box-shadow: 0 0 6px #10b981;
+    animation: glowPulse 2s ease-in-out infinite;
+  }
+  .status-dot-inactive { @apply status-dot bg-gray-600; }
+}
+
+/* ───────────────────────────────────────────────
+   Noise texture overlay
+─────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  opacity: 0.025;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ───────────────────────────────────────────────
+   Dynamic SDK
+─────────────────────────────────────────────── */
+
+/* Let DynamicWidget fill its container without overriding its internal layout */
+.dynamic-connect-wrapper {
+  width: 100%;
+}
+
+/* ───────────────────────────────────────────────
+   JSON editor highlight
+─────────────────────────────────────────────── */
+.json-string  { color: #86efac; }
+.json-number  { color: #fcd34d; }
+.json-boolean { color: #f0abfc; }
+.json-null    { color: #94a3b8; }
+.json-key     { color: #93c5fd; }
