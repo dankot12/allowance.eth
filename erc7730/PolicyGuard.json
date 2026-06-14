@@ -125,17 +125,11 @@
     "owner": "Allowance.eth",
     "info": {
       "url": "https://allowance.eth",
-      "legalName": "Allowance.eth — AI Agent Spending Policies",
+      "legalName": "Allowance.eth",
       "lastUpdate": "2026-06-14T00:00:00Z"
     },
-    "token": null,
-    "constants": {},
-    "enumerations": {
-      "KnownTarget": {
-        "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45": "Uniswap V3 SwapRouter02",
-        "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD": "Uniswap Universal Router",
-        "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951": "Aave V3 Pool (Sepolia)"
-      }
+    "constants": {
+      "nativeToken": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
     }
   },
 
@@ -154,7 +148,7 @@
           },
           {
             "path": "policyHash",
-            "label": "Policy Hash (keccak256 of JSON)",
+            "label": "Policy Hash",
             "format": "raw"
           }
         ],
@@ -170,7 +164,7 @@
         "required": ["namehash_", "policyHash"]
       },
 
-      "check(bytes32,address,uint256,bytes,(((uint256,bool),(uint256,bool),(uint256,bool),(uint32,uint32,bool),address[],bool)),string)": {
+      "check(bytes32,address,uint256,bytes,((uint256,bool),(uint256,bool),(uint256,bool),(uint32,uint32,bool),address[],bool),string)": {
         "intent": "Authorize Agent Transaction",
         "fields": [
           {
@@ -183,30 +177,36 @@
             "path": "value",
             "label": "Amount",
             "format": "tokenAmount",
-            "params": { "token": "native", "message": "ETH" }
+            "params": { "token": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" }
           },
           {
             "path": "policy.dailyCap.amount",
             "label": "Daily Cap",
             "format": "tokenAmount",
-            "params": { "token": "native", "message": "ETH" }
+            "params": { "token": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" }
           },
           {
             "path": "policy.approvalThreshold.amount",
             "label": "Auto-Approve Below",
             "format": "tokenAmount",
-            "params": { "token": "native", "message": "ETH" }
+            "params": { "token": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" }
           },
           {
             "path": "policy.timeWindow.start",
-            "label": "Window Opens (UTC seconds)",
+            "label": "Window Opens (UTC)",
             "format": "raw"
           },
           {
             "path": "policy.timeWindow.end",
-            "label": "Window Closes (UTC seconds)",
+            "label": "Window Closes (UTC)",
             "format": "raw"
           }
+        ],
+        "excluded": [
+          "namehash_", "data", "policyJson",
+          "policy.dailyCap.enabled", "policy.approvalThreshold.enabled",
+          "policy.perCounterpartyCap.amount", "policy.perCounterpartyCap.enabled",
+          "policy.timeWindow.enabled", "policy.allowlist", "policy.allowlistEnabled"
         ],
         "screens": {
           "default": [
@@ -225,8 +225,8 @@
         "required": ["target", "value"]
       },
 
-      "checkWithHumanApproval(bytes32,address,uint256,bytes,(((uint256,bool),(uint256,bool),(uint256,bool),(uint32,uint32,bool),address[],bool)),string,bytes)": {
-        "intent": "Human Approval — Agent Transaction Override",
+      "checkWithHumanApproval(bytes32,address,uint256,bytes,((uint256,bool),(uint256,bool),(uint256,bool),(uint32,uint32,bool),address[],bool),string,bytes)": {
+        "intent": "Human Approval",
         "fields": [
           {
             "path": "target",
@@ -238,20 +238,27 @@
             "path": "value",
             "label": "Amount",
             "format": "tokenAmount",
-            "params": { "token": "native", "message": "ETH" }
+            "params": { "token": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" }
           },
           {
             "path": "policy.approvalThreshold.amount",
-            "label": "Threshold Exceeded Above",
+            "label": "Approval Threshold",
             "format": "tokenAmount",
-            "params": { "token": "native", "message": "ETH" }
+            "params": { "token": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" }
           },
           {
             "path": "policy.dailyCap.amount",
             "label": "Daily Cap",
             "format": "tokenAmount",
-            "params": { "token": "native", "message": "ETH" }
+            "params": { "token": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" }
           }
+        ],
+        "excluded": [
+          "namehash_", "data", "policyJson", "humanSig",
+          "policy.dailyCap.enabled", "policy.approvalThreshold.enabled",
+          "policy.perCounterpartyCap.amount", "policy.perCounterpartyCap.enabled",
+          "policy.timeWindow.start", "policy.timeWindow.end", "policy.timeWindow.enabled",
+          "policy.allowlist", "policy.allowlistEnabled"
         ],
         "screens": {
           "default": [
@@ -298,7 +305,7 @@
       },
 
       "setHumanApprover(bytes32,address)": {
-        "intent": "Authorize Ledger for Human Approvals",
+        "intent": "Authorize Ledger Approver",
         "fields": [
           {
             "path": "namehash_",
@@ -307,7 +314,7 @@
           },
           {
             "path": "approver",
-            "label": "Ledger Approver Address",
+            "label": "Ledger Approver",
             "format": "addressName",
             "params": { "sources": ["local", "ens"] }
           }
