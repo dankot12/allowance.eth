@@ -9,7 +9,7 @@
           "type": "function",
           "stateMutability": "nonpayable",
           "inputs": [
-            { "name": "namehash",   "type": "bytes32" },
+            { "name": "namehash_",  "type": "bytes32" },
             { "name": "policyHash", "type": "bytes32" }
           ],
           "outputs": []
@@ -27,44 +27,67 @@
               "name": "policy",
               "type": "tuple",
               "components": [
-                {
-                  "name": "dailyCap",
-                  "type": "tuple",
-                  "components": [
+                { "name": "dailyCap", "type": "tuple", "components": [
                     { "name": "amount",  "type": "uint256" },
                     { "name": "enabled", "type": "bool" }
-                  ]
-                },
-                {
-                  "name": "approvalThreshold",
-                  "type": "tuple",
-                  "components": [
+                ]},
+                { "name": "approvalThreshold", "type": "tuple", "components": [
                     { "name": "amount",  "type": "uint256" },
                     { "name": "enabled", "type": "bool" }
-                  ]
-                },
-                {
-                  "name": "perCounterpartyCap",
-                  "type": "tuple",
-                  "components": [
+                ]},
+                { "name": "perCounterpartyCap", "type": "tuple", "components": [
                     { "name": "amount",  "type": "uint256" },
                     { "name": "enabled", "type": "bool" }
-                  ]
-                },
-                {
-                  "name": "timeWindow",
-                  "type": "tuple",
-                  "components": [
+                ]},
+                { "name": "timeWindow", "type": "tuple", "components": [
                     { "name": "start",   "type": "uint32" },
                     { "name": "end",     "type": "uint32" },
                     { "name": "enabled", "type": "bool" }
-                  ]
-                },
+                ]},
                 { "name": "allowlist",        "type": "address[]" },
                 { "name": "allowlistEnabled", "type": "bool" }
               ]
             },
             { "name": "policyJson", "type": "string" }
+          ],
+          "outputs": [{ "name": "", "type": "bool" }]
+        },
+        {
+          "name": "checkWithHumanApproval",
+          "type": "function",
+          "stateMutability": "nonpayable",
+          "inputs": [
+            { "name": "namehash_",  "type": "bytes32" },
+            { "name": "target",     "type": "address" },
+            { "name": "value",      "type": "uint256" },
+            { "name": "data",       "type": "bytes" },
+            {
+              "name": "policy",
+              "type": "tuple",
+              "components": [
+                { "name": "dailyCap", "type": "tuple", "components": [
+                    { "name": "amount",  "type": "uint256" },
+                    { "name": "enabled", "type": "bool" }
+                ]},
+                { "name": "approvalThreshold", "type": "tuple", "components": [
+                    { "name": "amount",  "type": "uint256" },
+                    { "name": "enabled", "type": "bool" }
+                ]},
+                { "name": "perCounterpartyCap", "type": "tuple", "components": [
+                    { "name": "amount",  "type": "uint256" },
+                    { "name": "enabled", "type": "bool" }
+                ]},
+                { "name": "timeWindow", "type": "tuple", "components": [
+                    { "name": "start",   "type": "uint32" },
+                    { "name": "end",     "type": "uint32" },
+                    { "name": "enabled", "type": "bool" }
+                ]},
+                { "name": "allowlist",        "type": "address[]" },
+                { "name": "allowlistEnabled", "type": "bool" }
+              ]
+            },
+            { "name": "policyJson", "type": "string" },
+            { "name": "humanSig",   "type": "bytes"   }
           ],
           "outputs": [{ "name": "", "type": "bool" }]
         },
@@ -77,12 +100,22 @@
             { "name": "newOwner",  "type": "address" }
           ],
           "outputs": []
+        },
+        {
+          "name": "setHumanApprover",
+          "type": "function",
+          "stateMutability": "nonpayable",
+          "inputs": [
+            { "name": "namehash_", "type": "bytes32" },
+            { "name": "approver",  "type": "address" }
+          ],
+          "outputs": []
         }
       ],
       "deployments": [
         {
           "chainId": 11155111,
-          "address": "0x95028D3bFb24c168E55bEead6FFd3AeA2851c4dA"
+          "address": "0x6912A1247952dd082839d93c79f6e64c5898F939"
         }
       ]
     }
@@ -92,33 +125,31 @@
     "owner": "Allowance.eth",
     "info": {
       "url": "https://allowance.eth",
-      "legalName": "Allowance.eth — Agent Spending Policies",
-      "lastUpdate": "2024-01-01T00:00:00Z"
+      "legalName": "Allowance.eth — AI Agent Spending Policies",
+      "lastUpdate": "2026-06-14T00:00:00Z"
     },
     "token": null,
-    "constants": {
-      "sepoliaExplorer": "https://sepolia.etherscan.io"
-    },
-    "enumerations": {}
+    "constants": {},
+    "enumerations": {
+      "KnownTarget": {
+        "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45": "Uniswap V3 SwapRouter02",
+        "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD": "Uniswap Universal Router",
+        "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951": "Aave V3 Pool (Sepolia)"
+      }
+    }
   },
 
   "display": {
-    "definitions": {
-      "wei_to_eth": {
-        "type": "tokenAmount",
-        "token": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
-        "message": "ETH"
-      }
-    },
+    "definitions": {},
 
     "formats": {
 
       "updatePolicy(bytes32,bytes32)": {
-        "intent": "Publish Agent Spending Policy",
+        "intent": "Register Spending Policy",
         "fields": [
           {
-            "path": "namehash",
-            "label": "Agent ENS Namehash",
+            "path": "namehash_",
+            "label": "ENS Name Hash",
             "format": "raw"
           },
           {
@@ -131,65 +162,49 @@
           "default": [
             {
               "type": "propertyPage",
-              "label": "POLICY UPDATE",
-              "fields": ["namehash", "policyHash"]
+              "label": "REGISTER POLICY",
+              "fields": ["namehash_", "policyHash"]
             }
           ]
         },
-        "required": ["namehash", "policyHash"]
+        "required": ["namehash_", "policyHash"]
       },
 
       "check(bytes32,address,uint256,bytes,(((uint256,bool),(uint256,bool),(uint256,bool),(uint32,uint32,bool),address[],bool)),string)": {
-        "intent": "Agent Transaction — Policy Check",
+        "intent": "Authorize Agent Transaction",
         "fields": [
           {
             "path": "target",
-            "label": "Transaction Target",
+            "label": "Destination",
             "format": "addressName",
-            "params": {
-              "sources": ["local", "ens"]
-            }
+            "params": { "sources": ["local", "ens"] }
           },
           {
             "path": "value",
-            "label": "ETH Value",
+            "label": "Amount",
             "format": "tokenAmount",
-            "params": {
-              "token": "native",
-              "message": "ETH"
-            }
+            "params": { "token": "native", "message": "ETH" }
           },
           {
             "path": "policy.dailyCap.amount",
             "label": "Daily Cap",
             "format": "tokenAmount",
-            "params": {
-              "token": "native",
-              "message": "wei"
-            }
+            "params": { "token": "native", "message": "ETH" }
           },
           {
             "path": "policy.approvalThreshold.amount",
-            "label": "Approval Threshold",
+            "label": "Auto-Approve Below",
             "format": "tokenAmount",
-            "params": {
-              "token": "native",
-              "message": "wei"
-            }
-          },
-          {
-            "path": "policy.allowlistEnabled",
-            "label": "Allowlist Active",
-            "format": "raw"
+            "params": { "token": "native", "message": "ETH" }
           },
           {
             "path": "policy.timeWindow.start",
-            "label": "Window Start (seconds UTC)",
+            "label": "Window Opens (UTC seconds)",
             "format": "raw"
           },
           {
             "path": "policy.timeWindow.end",
-            "label": "Window End (seconds UTC)",
+            "label": "Window Closes (UTC seconds)",
             "format": "raw"
           }
         ],
@@ -202,12 +217,53 @@
             },
             {
               "type": "propertyPage",
-              "label": "ACTIVE POLICY",
-              "fields": [
-                "policy.dailyCap.amount",
-                "policy.approvalThreshold.amount",
-                "policy.allowlistEnabled"
-              ]
+              "label": "SPENDING RULES",
+              "fields": ["policy.dailyCap.amount", "policy.approvalThreshold.amount"]
+            }
+          ]
+        },
+        "required": ["target", "value"]
+      },
+
+      "checkWithHumanApproval(bytes32,address,uint256,bytes,(((uint256,bool),(uint256,bool),(uint256,bool),(uint32,uint32,bool),address[],bool)),string,bytes)": {
+        "intent": "Human Approval — Agent Transaction Override",
+        "fields": [
+          {
+            "path": "target",
+            "label": "Destination",
+            "format": "addressName",
+            "params": { "sources": ["local", "ens"] }
+          },
+          {
+            "path": "value",
+            "label": "Amount",
+            "format": "tokenAmount",
+            "params": { "token": "native", "message": "ETH" }
+          },
+          {
+            "path": "policy.approvalThreshold.amount",
+            "label": "Threshold Exceeded Above",
+            "format": "tokenAmount",
+            "params": { "token": "native", "message": "ETH" }
+          },
+          {
+            "path": "policy.dailyCap.amount",
+            "label": "Daily Cap",
+            "format": "tokenAmount",
+            "params": { "token": "native", "message": "ETH" }
+          }
+        ],
+        "screens": {
+          "default": [
+            {
+              "type": "propertyPage",
+              "label": "HUMAN APPROVAL",
+              "fields": ["target", "value"]
+            },
+            {
+              "type": "propertyPage",
+              "label": "POLICY LIMITS",
+              "fields": ["policy.approvalThreshold.amount", "policy.dailyCap.amount"]
             }
           ]
         },
@@ -215,32 +271,57 @@
       },
 
       "transferPolicyOwnership(bytes32,address)": {
-        "intent": "Transfer Policy Ownership",
+        "intent": "Transfer Policy Control",
         "fields": [
           {
             "path": "namehash_",
-            "label": "Agent ENS Namehash",
+            "label": "ENS Name Hash",
             "format": "raw"
           },
           {
             "path": "newOwner",
             "label": "New Owner Address",
             "format": "addressName",
-            "params": {
-              "sources": ["local", "ens"]
-            }
+            "params": { "sources": ["local", "ens"] }
           }
         ],
         "screens": {
           "default": [
             {
               "type": "propertyPage",
-              "label": "TRANSFER OWNERSHIP",
+              "label": "TRANSFER POLICY",
               "fields": ["namehash_", "newOwner"]
             }
           ]
         },
         "required": ["namehash_", "newOwner"]
+      },
+
+      "setHumanApprover(bytes32,address)": {
+        "intent": "Authorize Ledger for Human Approvals",
+        "fields": [
+          {
+            "path": "namehash_",
+            "label": "ENS Name Hash",
+            "format": "raw"
+          },
+          {
+            "path": "approver",
+            "label": "Ledger Approver Address",
+            "format": "addressName",
+            "params": { "sources": ["local", "ens"] }
+          }
+        ],
+        "screens": {
+          "default": [
+            {
+              "type": "propertyPage",
+              "label": "SET APPROVER",
+              "fields": ["namehash_", "approver"]
+            }
+          ]
+        },
+        "required": ["namehash_", "approver"]
       }
 
     }

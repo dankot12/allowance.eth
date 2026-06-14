@@ -1,18 +1,110 @@
-# Allowance.eth
+# allowance.eth 💸
 
-> Portable, human-readable spending policies for AI agent wallets. Stored on ENS. Enforced on-chain.
+> Portable AI spending policies — rules live on the agent's ENS identity, not the wallet infrastructure.
 
-## Architecture
+AI agents need to spend crypto. Today, spending limits live in wallet configs, relayer settings, or offchain databases — swap infrastructure and you reconfigure from scratch. **allowance.eth** anchors the policy to the agent's ENS name instead. Transfer the name, the rules follow. Change wallets, the rules follow. Nothing resets.
+
+Built for [EthGlobal NYC 2026](https://ethglobal.com).
+
+---
+
+## How it works
 
 ```
-User types English → Claude (sonnet-4-6) → validated JSON → ENS text record
-                                                           ↘
-                                                       PolicyGuard.sol (keccak hash)
-                                                           ↙
-                                       every agent tx → check() → APPROVE / REVERT
+Natural language  →  Claude (claude-sonnet-4-6)  →  validated JSON policy
+                                                          │
+                                              ┌───────────┴────────────┐
+                                         ENS text record          PolicyGuard.sol
+                                     (allowance.policy.v1)       (keccak256 hash)
+                                              │                         │
+                                         Agent reads                Every tx →
+                                         policy from               simulate() →
+                                         the ENS name           ALLOW / BLOCK / APPROVE
 ```
 
-## Quickstart
+Every agent transaction is checked on-chain against three gates:
+
+1. **Daily cap** — rolling spend limit per token
+2. **Allowlist** — only whitelisted contracts can be called
+3. **Human approval** — transactions above a threshold require a Ledger signature
+
+The policy travels with the ENS name. Transfer the name, a new wallet gets the spending rules automatically.
+
+---
+
+## Live deployment (Sepolia)
+
+| Contract | Address |
+|---|---|
+| PolicyGuard | `0x6912A1247952dd082839d93c79f6e64c5898F939` |
+| ENS v2 Resolver | `0xdc58Fa0E2915579b0679ee9c6dDd328b47e90c99` |
+| Demo agent ENS | `traderbot.eth` (ENS v2 namechain alpha) |
+
+---
+
+## Project structure
+
+```
+allowance.eth/
+├── src/PolicyGuard.sol                      ← On-chain policy enforcement
+├── script/DeployPolicyGuard.s.sol           ← Foundry deploy script
+├── test/PolicyGuard.t.sol                   ← Forge tests
+├── erc7730/PolicyGuard.json                 ← Ledger ERC-7730 clear signing descriptor
+├── speculos/                                ← Ledger Speculos emulator bridge
+├── setup-agent-write.ts                     ← Write ENS text record via viem
+├── setup-agent-read.ts                      ← Read ENS text record via viem
+├── setup-agent-readsubnames.ts              ← Read subname records
+└── frontend/
+    ├── app/
+    │   ├── page.tsx                         ← Policy authoring + simulator (home)
+    │   ├── transfer/page.tsx                ← Transfer Agent Identity
+    │   ├── profile/page.tsx                 ← ENS profile viewer
+    │   ├── agent/page.tsx                   ← Agent activity log
+    │   └── api/
+    │       ├── translate-policy/            ← Claude: natural language → JSON policy
+    │       ├── submit-approval/             ← Relayer: submit human-approved tx
+    │       ├── transfer-ownership/          ← Relayer: transfer PolicyGuard ownership
+    │       └── grant-resolver-role/         ← Relayer: grant ENS v2 resolver roles
+    ├── lib/
+    │   ├── policySchema.ts                  ← Types, JSON schema, validator
+    │   └── ensClient.ts                     ← viem ENS + PolicyGuard helpers
+    └── components/
+        ├── PolicyEditor.tsx                 ← Natural language + JSON policy editor
+        ├── AgentSimulator.tsx               ← Simulate agent transactions on-chain
+        ├── PublishPanel.tsx                 ← Publish policy to ENS + PolicyGuard
+        ├── TransferIdentityPanel.tsx        ← Transfer agent identity to new wallet
+        ├── PolicyCard.tsx                   ← Policy preview card
+        ├── PolicyDiff.tsx                   ← On-chain vs local policy diff
+        └── Navbar.tsx
+```
+
+---
+
+## Policy schema (v1)
+
+Stored as a JSON text record on ENS under the key `allowance.policy.v1`.
+
+```jsonc
+{
+  "version": "1",
+  "name": "Uniswap Trading Policy",
+  "dailyCap": { "amount": 50, "token": "USDC" },
+  "allowlist": [
+    "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",  // Uniswap V3 Router
+    "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD",  // Uniswap Universal Router
+    "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951"   // AAVE V3 Pool (Sepolia)
+  ],
+  "timeWindow": { "start": "09:00", "end": "17:00", "timezone": "UTC" },
+  "approvalThreshold": { "amount": 30, "token": "USDC" },
+  "perCounterpartyCap": { "amount": 20, "token": "USDC" },
+  "expiresAt": "2026-12-31T23:59:59Z",
+  "notes": "Human-readable description"
+}
+```
+
+---
+
+## Getting started
 
 ### 1. Deploy PolicyGuard
 
@@ -20,9 +112,8 @@ User types English → Claude (sonnet-4-6) → validated JSON → ENS text recor
 # Install Foundry: https://getfoundry.sh
 forge install
 
-# Set env vars
 cp .env.example .env
-# Fill in PRIVATE_KEY, SEPOLIA_RPC_URL, ETHERSCAN_API_KEY
+# Fill in: PRIVATE_KEY, SEPOLIA_RPC_URL, ETHERSCAN_API_KEY
 
 forge script script/DeployPolicyGuard.s.sol \
   --rpc-url $SEPOLIA_RPC_URL \
@@ -30,11 +121,11 @@ forge script script/DeployPolicyGuard.s.sol \
   --broadcast \
   --verify \
   --etherscan-api-key $ETHERSCAN_API_KEY
-
-# Copy the deployed address into frontend/.env.local as NEXT_PUBLIC_POLICY_GUARD_ADDRESS
 ```
 
-### 2. Run tests
+Copy the deployed address into `frontend/.env.local` as `NEXT_PUBLIC_POLICY_GUARD_ADDRESS`.
+
+### 2. Run smart contract tests
 
 ```bash
 forge test -vvv
@@ -45,229 +136,77 @@ forge test -vvv
 ```bash
 cd frontend
 npm install
+
 cp .env.example .env.local
-# Fill in ANTHROPIC_API_KEY, NEXT_PUBLIC_POLICY_GUARD_ADDRESS, NEXT_PUBLIC_RPC_URL
-npm run dev  # → http://localhost:3000
+# Fill in:
+#   ANTHROPIC_API_KEY               — for natural language policy authoring
+#   NEXT_PUBLIC_POLICY_GUARD_ADDRESS
+#   NEXT_PUBLIC_RPC_URL
+#   NEXT_PUBLIC_DYNAMIC_ENV_ID      — from app.dynamic.xyz
+#   PRIVATE_KEY                     — relayer key for server-side operations
+
+npm run dev   # → http://localhost:3000
 ```
 
 ---
 
-## Project structure
+## Key features
 
-```
-allowance.eth/
-├── src/PolicyGuard.sol                    ← On-chain policy enforcement
-├── script/DeployPolicyGuard.s.sol
-├── test/PolicyGuard.t.sol
-├── setup-agent-read.ts                    ← Read ENS text record (viem)
-├── setup-agent-write.ts                   ← Write ENS text record (viem)
-└── frontend/
-    ├── app/
-    │   ├── page.tsx                       ← Policy authoring (home)
-    │   ├── agent/page.tsx                 ← Agent activity log
-    │   ├── profile/page.tsx               ← ENS profile viewer
-    │   └── api/translate-policy/route.ts  ← Claude NL→JSON API
-    └── lib/
-        ├── policySchema.ts                ← Types, JSON Schema, validator
-        └── ensClient.ts                   ← viem ENS + PolicyGuard helpers
-```
+### Policy authoring
+Type spending rules in plain English — *"Max 0.1 ETH per day on AAVE, require human approval above 0.05 ETH"* — and Claude translates it to a validated JSON policy. Edit the JSON directly or use the natural language interface.
 
----
+### On-chain simulation
+Before any transaction, the agent calls `PolicyGuard.simulate()` to check against all gates (daily cap, allowlist, time window). The frontend simulator lets you test any target contract and amount interactively against the live published policy.
 
-## Policy schema (v1)
+### Human approval via Ledger
+When a transaction exceeds the approval threshold, it requires a human signature from a Ledger device. The Speculos emulator bridge (`speculos/`) enables this flow in development. Uses Ledger's ERC-7730 clear signing — the device shows a human-readable summary, not raw hex.
 
-```jsonc
-{
-  "version": "1",
-  "name": "My Agent Policy",
-  "dailyCap": { "amount": 50, "token": "USDC" },           // max spend/day
-  "allowlist": ["0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45"], // allowed contracts
-  "timeWindow": { "start": "09:00", "end": "17:00", "timezone": "UTC" },
-  "approvalThreshold": { "amount": 30, "token": "USDC" },  // human approval above
-  "perCounterpartyCap": { "amount": 20, "token": "USDC" }, // per-contract daily cap
-  "expiresAt": "2024-12-31T23:59:59Z",
-  "notes": "Human-readable description"
-}
-```
+### Transfer Agent Identity
+Moving to a new wallet takes three sequential MetaMask transactions:
+1. Grant ENS v2 resolver manager roles to the new wallet
+2. Update the ENS addr record to point to the new wallet
+3. Transfer PolicyGuard ownership to the new wallet
 
-ENS text record key: `allowance.policy.v1`
+The spending policy is untouched. Rules travel with the ENS name.
+
+### Policy diff
+Live diff between the policy currently published on-chain and any local edits — see exactly what changes before publishing.
 
 ---
 
-## Plugging in sponsors
+## Ledger ERC-7730 clear signing
 
-### Dynamic (wallet + agent signing)
-In `frontend/app/components/PublishPanel.tsx`, replace the private-key block with:
+The descriptor at `erc7730/PolicyGuard.json` covers three contract functions. When a transaction hits the approval threshold, the Ledger shows:
 
-```ts
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
-const { primaryWallet } = useDynamicContext();
-const walletClient = await primaryWallet.getWalletClient();
-const result = await publishPolicy(walletClient, ensName, policy);
-```
-
-Add `DynamicContextProvider` wrapping `app/layout.tsx`.
-
-### Ledger (ERC-7730 Clear Signing)
-
-The descriptor is at `erc7730/PolicyGuard.json`. It covers three functions:
-- `updatePolicy` — shows "POLICY UPDATE: Agent ENS Namehash / Policy Hash" on the device
-- `check` — shows "AGENT REQUEST: Target / ETH Value" + "ACTIVE POLICY: Daily Cap / Approval Threshold"
-- `transferPolicyOwnership` — shows "TRANSFER OWNERSHIP: Namehash / New Owner"
-
-**Steps to activate it:**
-
-1. After deploying PolicyGuard, update the address in `erc7730/PolicyGuard.json`:
-   ```json
-   "deployments": [{ "chainId": 11155111, "address": "0xYOUR_DEPLOYED_ADDRESS" }]
-   ```
-
-2. Install the Ledger ERC-7730 CLI:
-   ```bash
-   pip install ledger-erc7730
-   ```
-
-3. Validate your descriptor:
-   ```bash
-   erc7730 lint erc7730/PolicyGuard.json
-   ```
-
-4. Test against the Ledger Stax simulator:
-   ```bash
-   erc7730 test erc7730/PolicyGuard.json --device stax
-   ```
-
-5. For the hackathon demo, submit to the registry:
-   ```bash
-   # Fork https://github.com/LedgerHQ/clear-signing-erc7730-registry
-   # Copy erc7730/PolicyGuard.json into registries/ethereum/sepolia/
-   # Open a PR
-   ```
-
-**What the device shows (demo beats):**
-
-When the user publishes a policy:
-```
-POLICY UPDATE
-Agent ENS Namehash: 0xabc...
-Policy Hash: 0xdef...
-[Approve] [Reject]
-```
-
-When an agent transaction crosses the approval threshold:
 ```
 AGENT REQUEST
 Target: Uniswap Universal Router
-ETH Value: 35.0 ETH
+ETH Value: 35.0 USDC
 
 ACTIVE POLICY
-Daily Cap: 50.0 ETH
-Approval Threshold: 30.0 ETH
+Daily Cap: 50.0 USDC
+Approval Threshold: 30.0 USDC
 [Approve] [Reject]
 ```
 
-### Agent Executor
-Run `agent-executor.ts` to simulate the terminal demo beats:
+To validate the descriptor:
 
 ```bash
-# Happy path — 25 USDC to Uniswap, within cap
-npx ts-node agent-executor.ts \
-  --ens allowance-test-123.eth \
-  --to 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45 \
-  --value 0 \
-  --data 0x
-
-# Blocked — 51 USDC exceeds daily cap
-npx ts-node agent-executor.ts \
-  --ens allowance-test-123.eth \
-  --to 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45 \
-  --value 51000000 \
-  --data 0x
-
-# Needs human approval — 35 USDC above $30 threshold
-npx ts-node agent-executor.ts \
-  --ens allowance-test-123.eth \
-  --to 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45 \
-  --value 35000000 \
-  --data 0x
+pip install ledger-erc7730
+erc7730 lint erc7730/PolicyGuard.json
 ```
-
-### EIP-7702 (EOA agent executor — stretch goal)
-Use viem's `signAuthorization` + `sendTransaction` with `authorizationList` to delegate the EOA to a contract that calls `PolicyGuard.check()` before executing.
 
 ---
 
-## ENS standards
+## Stack
 
-- [ENSIP-25](https://docs.ens.domains/ensip/25) — AI Agent Registry
-- [ENSIP-26](https://docs.ens.domains/ensip/26) — Agent Text Records
-- Text record key: `allowance.policy.v1`
-
----
-
-## Foundry reference
-
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
-
-Foundry consists of:
-
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
-```
-
-### Test
-
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+| Layer | Tech |
+|---|---|
+| Smart contracts | Solidity + Foundry |
+| On-chain reads/writes | viem |
+| Wallet connection | Dynamic |
+| AI policy authoring | Anthropic Claude (claude-sonnet-4-6) |
+| ENS | ENS v2 namechain (Sepolia alpha) |
+| Ledger signing | ERC-7730 + Speculos emulator |
+| Frontend | Next.js 14, Tailwind CSS |
+| Network | Sepolia testnet |
