@@ -85,7 +85,7 @@ type SimResult =
   | { status: "policy_not_set" }
   | { status: "error"; message: string };
 
-type ApprovalState = "idle" | "signing" | "submitting" | "approved" | "failed";
+type ApprovalState = "idle" | "signing" | "submitting" | "approved" | "rejected" | "failed";
 
 // ─── component ───────────────────────────────────────────────
 
@@ -299,10 +299,18 @@ export default function AgentSimulator({ ensName, policy }: Props) {
     } catch (err: unknown) {
       console.error("Ledger approval failed:", err);
       const msg = err instanceof Error ? err.message : String(err);
-      // Extract the revert reason cleanly
-      const match = msg.match(/Error: (\w+)\(([^)]*)\)/) ?? msg.match(/reverted.*?:\s*(.+)/);
-      setApprovalError(match ? match[0].replace("Error: ", "") : msg.slice(0, 120));
-      setApprovalState("failed");
+      const isRejected =
+        msg.includes("0x6985") ||
+        msg.toLowerCase().includes("denied by the user") ||
+        msg.toLowerCase().includes("condition of use not satisfied") ||
+        msg.toLowerCase().includes("user rejected");
+      if (isRejected) {
+        setApprovalState("rejected");
+      } else {
+        const match = msg.match(/Error: (\w+)\(([^)]*)\)/) ?? msg.match(/reverted.*?:\s*(.+)/);
+        setApprovalError(match ? match[0].replace("Error: ", "") : msg.slice(0, 120));
+        setApprovalState("failed");
+      }
     }
   }
 
@@ -314,19 +322,6 @@ export default function AgentSimulator({ ensName, policy }: Props) {
           Agent Transaction Simulator
         </h2>
         <div className="flex items-center gap-3">
-          {todaySpend !== null && (
-            <span className="text-xs text-gray-500">
-              Today:{" "}
-              <span className="text-white font-mono">
-                {todaySpend.toFixed(2)} {policy?.dailyCap?.token ?? "USDC"}
-              </span>
-              {policy?.dailyCap && (
-                <span className="text-gray-600">
-                  {" "}/ {policy.dailyCap.amount} {policy.dailyCap.token}
-                </span>
-              )}
-            </span>
-          )}
           <button
             onClick={() => setSpeculosMode((v) => !v)}
             title={speculosMode ? "Speculos mode — signing via emulator" : "Click to use Speculos emulator"}
@@ -545,16 +540,31 @@ export default function AgentSimulator({ ensName, policy }: Props) {
                 </div>
               )}
 
+              {approvalState === "rejected" && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-yellow-500 text-sm">
+                    <XCircle className="w-4 h-4 flex-shrink-0" />
+                    You declined on the device — nothing was submitted.
+                  </div>
+                  <button
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-sm font-medium hover:bg-yellow-900/60 transition-colors"
+                    onClick={() => { setApprovalState("idle"); setApprovalError(null); }}
+                  >
+                    <Shield className="w-4 h-4" /> Try again
+                  </button>
+                </div>
+              )}
+
               {approvalState === "failed" && (
                 <div className="flex items-start gap-2 text-red-400 text-sm">
                   <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   <div>
-                    <div className="font-medium">Blocked on-chain even with approval</div>
+                    <div className="font-medium">Transaction rejected by the contract</div>
                     {approvalError && (
                       <div className="text-xs text-red-500/80 mt-0.5 font-mono">{approvalError}</div>
                     )}
                     <div className="text-xs text-red-500/60 mt-1">
-                      Human approval bypasses the threshold gate, but hard limits (daily cap, allowlist) still apply.
+                      The human signature was valid, but a hard limit blocked it — check the daily cap and allowlist.
                     </div>
                   </div>
                 </div>
