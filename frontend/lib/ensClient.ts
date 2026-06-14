@@ -27,7 +27,7 @@ export const ENS_PUBLIC_RESOLVER: Address =
 
 export const POLICY_GUARD_ADDRESS: Address =
   (process.env.NEXT_PUBLIC_POLICY_GUARD_ADDRESS as Address) ??
-  "0x0000000000000000000000000000000000000000"; // ← replace after deploy
+  "0x6912A1247952dd082839d93c79f6e64c5898F939";
 
 export const POLICY_ENS_KEY = "allowance.policy.v1";
 
@@ -48,6 +48,7 @@ export const RESOLVER_ABI = parseAbi([
   "function text(bytes32 node, string key) external view returns (string)",
   "function setText(bytes32 node, string key, string value) external",
   "function addr(bytes32 node) external view returns (address)",
+  "function setAddr(bytes32 node, address addr) external",
 ]);
 
 export const POLICY_GUARD_ABI = parseAbi([
@@ -55,6 +56,9 @@ export const POLICY_GUARD_ABI = parseAbi([
   "function getPolicyHash(bytes32 namehash) external view returns (bytes32)",
   "function getTodaySpend(bytes32 namehash) external view returns (uint256)",
   "function policyOwners(bytes32 namehash) external view returns (address)",
+  "function humanApprovers(bytes32 namehash) external view returns (address)",
+  "function setHumanApprover(bytes32 namehash_, address approver) external",
+  "function transferPolicyOwnership(bytes32 namehash_, address newOwner) external",
 ]);
 
 // Full ABI with ParsedPolicy tuple — used by AgentSimulator for simulate/checkWithHumanApproval
@@ -111,6 +115,16 @@ export const POLICY_GUARD_FULL_ABI = [
     name: "getTodaySpend", type: "function" as const, stateMutability: "view" as const,
     inputs: [{ name: "namehash_", type: "bytes32" as const }],
     outputs: [{ name: "", type: "uint256" as const }],
+  },
+  {
+    name: "humanApprovers", type: "function" as const, stateMutability: "view" as const,
+    inputs: [{ name: "namehash_", type: "bytes32" as const }],
+    outputs: [{ name: "", type: "address" as const }],
+  },
+  {
+    name: "setHumanApprover", type: "function" as const, stateMutability: "nonpayable" as const,
+    inputs: [{ name: "namehash_", type: "bytes32" as const }, { name: "approver", type: "address" as const }],
+    outputs: [],
   },
 ] as const;
 

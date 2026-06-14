@@ -32,7 +32,7 @@ Rules:
 - If the user mentions specific protocols like Uniswap, set the allowlist to the well-known contract address:
   - Uniswap V3 Router: 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45
   - Uniswap Universal Router: 0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD
-  - Aave V3 Pool: 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2
+  - Aave V3 Pool (Sepolia): 0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951
   - Compound USDC: 0xc3d688B66703497DAA19211EEdff47f25384cdc3
 - ALWAYS set version to "1".
 - ALWAYS set a descriptive name based on the user's input.

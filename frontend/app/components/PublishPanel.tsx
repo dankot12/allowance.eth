@@ -96,6 +96,14 @@ export default function PublishPanel({ policy, ensName, onPublished }: PublishPa
         if (!resolverAddress || resolverAddress === "0x0000000000000000000000000000000000000000") {
           throw new Error("No resolver found for this ENS name on Sepolia");
         }
+        // Pre-simulate to avoid MetaMask popup when resolver will reject (e.g. CCIP-Write, unauthorized)
+        await publicClient.simulateContract({
+          address: resolverAddress,
+          abi: RESOLVER_ABI,
+          functionName: "setText",
+          args: [node, POLICY_ENS_KEY, policyStr],
+          account,
+        });
         const ensTx = await walletClient.writeContract({
           address: resolverAddress,
           abi: RESOLVER_ABI,
@@ -107,13 +115,13 @@ export default function PublishPanel({ policy, ensName, onPublished }: PublishPa
       } catch (ensErr: unknown) {
         const msg = ensErr instanceof Error ? ensErr.message : String(ensErr);
         if (msg.includes("0x4b27a133") || msg.toLowerCase().includes("offchaindatabase")) {
-          // CCIP-Write: off-chain resolver — continue to PolicyGuard anyway
           setEnsWarning(
             "ENS text record requires ENS Explorer (off-chain resolver). Copy the JSON and set it manually. PolicyGuard hash will still be registered below."
           );
+        } else if (msg.toLowerCase().includes("unauthorized") || msg.toLowerCase().includes("not owner")) {
+          setEnsWarning(`ENS setText rejected — wallet may not control ${ensName} on Sepolia. Set the text record manually via ENS Explorer. Registering PolicyGuard hash below.`);
         } else {
-          // Real error — still try PolicyGuard
-          setEnsWarning(`ENS write failed: ${msg.slice(0, 100)}. Continuing with PolicyGuard registration.`);
+          setEnsWarning(`ENS setText skipped (${msg.slice(0, 80)}). Registering PolicyGuard hash only.`);
         }
       }
 
@@ -152,7 +160,7 @@ export default function PublishPanel({ policy, ensName, onPublished }: PublishPa
     }
   };
 
-  const ensExplorerUrl = `https://app.ens.domains/${ensName}?tab=records`;
+  const ensExplorerUrl = `https://explorer.ens.dev/${ensName}`;
   const isPublishing = publishStep === "setting-ens" || publishStep === "registering-guard";
 
   const publishLabel = {

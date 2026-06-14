@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Shield, Activity, Search, LogOut } from "lucide-react";
+import { Shield, Activity, Search, Repeat2, LogOut } from "lucide-react";
 import { DynamicWidget } from "@dynamic-labs/sdk-react-core";
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 import { useEffect, useState } from "react";
@@ -38,9 +38,10 @@ export default function Navbar() {
   useEffect(() => setMounted(true), []);
 
   const links = [
-    { href: "/", label: "Policy Editor", icon: Shield },
-    { href: "/agent", label: "Agent Log", icon: Activity },
-    { href: "/profile", label: "ENS Profile", icon: Search },
+    { href: "/",        label: "Policy Editor",      icon: Shield   },
+    { href: "/agent",   label: "Agent Log",           icon: Activity },
+    { href: "/transfer", label: "Transfer Identity",  icon: Repeat2  },
+    { href: "/profile", label: "ENS Profile",         icon: Search   },
   ];
 
   return (

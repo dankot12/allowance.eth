@@ -52,6 +52,7 @@ contract PolicyGuard {
 
     event PolicyUpdated(bytes32 indexed namehash, bytes32 policyHash, address updatedBy);
     event PaymasterUpdated(bytes32 indexed namehash, address paymaster);
+    event HumanApproverSet(bytes32 indexed namehash, address approver);
     event TransactionApproved(bytes32 indexed namehash, address target, uint256 value);
     event TransactionApprovedByHuman(bytes32 indexed namehash, address target, uint256 value, address approver);
     event TransactionBlocked(bytes32 indexed namehash, address target, uint256 value, string reason);
@@ -71,6 +72,10 @@ contract PolicyGuard {
 
     /// @notice namehash → authorized updater (owner of the ENS name, set at registration)
     mapping(bytes32 => address) public policyOwners;
+
+    /// @notice namehash → address authorized to sign human approvals (e.g. Ledger/Speculos device).
+    ///         Defaults to policyOwner if not set. Separated so the signer never needs gas.
+    mapping(bytes32 => address) public humanApprovers;
 
     /// @notice namehash → authorized ERC-4337 paymaster (can call recordSpend in postOp)
     mapping(bytes32 => address) public authorizedPaymasters;
@@ -129,6 +134,17 @@ contract PolicyGuard {
     function transferPolicyOwnership(bytes32 namehash_, address newOwner) external {
         if (policyOwners[namehash_] != msg.sender) revert Unauthorized();
         policyOwners[namehash_] = newOwner;
+    }
+
+    /**
+     * @notice Set a dedicated human approver address for Ledger/Speculos signing.
+     *         Decoupled from policyOwner so the signing device never needs gas.
+     *         Set to address(0) to fall back to policyOwner for approvals.
+     */
+    function setHumanApprover(bytes32 namehash_, address approver) external {
+        if (policyOwners[namehash_] != msg.sender) revert Unauthorized();
+        humanApprovers[namehash_] = approver;
+        emit HumanApproverSet(namehash_, approver);
     }
 
     /**
@@ -205,10 +221,12 @@ contract PolicyGuard {
         string calldata policyJson,
         bytes calldata humanSig
     ) external returns (bool) {
-        // Verify Ledger signature is from the registered policy owner
+        // Verify Ledger signature is from the humanApprover (if set) or the policy owner
         bytes32 digest = _approvalDigest(namehash_, target, value, policyJson);
         address signer = _recoverSigner(digest, humanSig);
-        if (signer != policyOwners[namehash_]) revert InvalidSignature();
+        address approver = humanApprovers[namehash_];
+        address expected = approver != address(0) ? approver : policyOwners[namehash_];
+        if (signer != expected) revert InvalidSignature();
 
         // Run all checks except approvalThreshold — that's what human approval bypasses
         _verifyPolicyHash(namehash_, policyJson);

@@ -153,7 +153,7 @@ export default function ProfilePage() {
                 <div>
                   <h2 className="font-bold text-white text-lg">{state.ensName}</h2>
                   <a
-                    href={`https://app.ens.domains/${state.ensName}`}
+                    href={`https://explorer.ens.dev/${state.ensName}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1 mt-1"

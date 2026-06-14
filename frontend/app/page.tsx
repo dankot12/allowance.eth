@@ -11,7 +11,6 @@ import PolicyCard from "./components/PolicyCard";
 import PublishPanel from "./components/PublishPanel";
 import AgentSimulator from "./components/AgentSimulator";
 import PolicyDiff from "./components/PolicyDiff";
-import DeployChecklist from "./components/DeployChecklist";
 import type { AllowancePolicy } from "@/lib/policySchema";
 
 const SAVED_NAMES_KEY = "allowance_ens_names";
@@ -54,8 +53,6 @@ export default function Home() {
   const [ensName, setEnsName] = useState("");
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("idle");
   const [savedNames, setSavedNames] = useState<string[]>([]);
-  const [checklistOpen, setChecklistOpen] = useState(false);
-  const [lastPublishedJson, setLastPublishedJson] = useState("");
   const verifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
@@ -103,9 +100,7 @@ export default function Home() {
   const handlePublished = useCallback((name: string) => {
     const updated = addSavedName(name);
     setSavedNames(updated);
-    setLastPublishedJson(policy ? JSON.stringify(policy) : "");
-    setChecklistOpen(true);
-  }, [policy]);
+  }, []);
 
   const connectedWallet = mounted ? primaryWallet : null;
 
@@ -122,12 +117,13 @@ export default function Home() {
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
             Your agent spends.{" "}
-            <span className="text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(135deg, #a78bff 0%, #7c3aed 50%, #06b6d4 100%)" }}>
+            <span style={{ backgroundImage: "linear-gradient(135deg, #f0abfc 0%, #c084fc 40%, #22d3ee 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
               You set the limits.
             </span>
           </h1>
-          <p className="text-gray-500 text-sm">
-            Define what your AI agent can spend. Published to ENS. Enforced on-chain. Move the name, move the rules.
+          <p className="text-gray-400 text-sm max-w-lg mx-auto">
+            Spending rules live on the ENS name, not the wallet.
+            Swap infrastructure, change wallets — the policy travels with the agent identity.
           </p>
         </div>
 
@@ -198,13 +194,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      <DeployChecklist
-        ensName={ensName}
-        policyJson={lastPublishedJson}
-        isOpen={checklistOpen}
-        onClose={() => setChecklistOpen(false)}
-      />
 
       <footer className="border-t border-surface-300/40">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between">

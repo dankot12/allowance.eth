@@ -5,7 +5,7 @@
       "deployments": [
         {
           "chainId": 11155111,
-          "address": "0x08d6142A58d721c80a0d810c3300306c89525dA7"
+          "address": "0x6912A1247952dd082839d93c79f6e64c5898F939"
         }
       ],
       "abi": [
@@ -97,6 +97,14 @@
             { "name": "namehash_", "type": "bytes32" },
             { "name": "newOwner", "type": "address" }
           ]
+        },
+        {
+          "name": "setHumanApprover",
+          "type": "function",
+          "inputs": [
+            { "name": "namehash_", "type": "bytes32" },
+            { "name": "approver", "type": "address" }
+          ]
         }
       ]
     }
@@ -113,7 +121,7 @@
       "KnownContract": {
         "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45": "Uniswap V3 SwapRouter02",
         "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD": "Uniswap Universal Router",
-        "0x08d6142A58d721c80a0d810c3300306c89525dA7": "PolicyGuard"
+        "0x6912A1247952dd082839d93c79f6e64c5898F939": "PolicyGuard"
       }
     }
   },
@@ -262,6 +270,30 @@
             {
               "title": "Transfer Policy",
               "fields": ["namehash_", "newOwner"]
+            }
+          ]
+        }
+      },
+
+      "setHumanApprover(bytes32,address)": {
+        "intent": "Authorize Ledger Device for Approvals",
+        "fields": [
+          {
+            "path": "namehash_",
+            "label": "ENS Name",
+            "format": "raw"
+          },
+          {
+            "path": "approver",
+            "label": "Ledger Approver Address",
+            "format": "address"
+          }
+        ],
+        "screens": {
+          "ledger": [
+            {
+              "title": "Set Ledger Approver",
+              "fields": ["namehash_", "approver"]
             }
           ]
         }

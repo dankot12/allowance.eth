@@ -1,0 +1,17 @@
+{
+  "name": "allowance-speculos-signer",
+  "version": "1.0.0",
+  "description": "Signing proxy between allowance.eth frontend and Speculos emulator",
+  "main": "signer.js",
+  "scripts": {
+    "start": "node signer.js",
+    "get-address": "node -e \"require('./signer').getAddress().then(a => console.log('Speculos address:', a))\""
+  },
+  "dependencies": {
+    "@ledgerhq/hw-app-eth": "^7.8.6",
+    "@ledgerhq/hw-transport-node-speculos-http": "^6.36.4",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "viem": "^2.52.2"
+  }
+}
