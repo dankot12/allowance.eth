@@ -8,7 +8,6 @@ import { namehash } from "viem";
 import Navbar from "./components/Navbar";
 import PolicyEditor from "./components/PolicyEditor";
 import PublishPanel from "./components/PublishPanel";
-import AgentSimulator from "./components/AgentSimulator";
 import PolicyDiff from "./components/PolicyDiff";
 import type { AllowancePolicy } from "@/lib/policySchema";
 
@@ -278,7 +277,6 @@ export default function Home() {
             </div>
 
             <PublishPanel policy={policy} ensName={ensName} onPublished={handlePublished} />
-            <AgentSimulator ensName={ensName} policy={policy} />
           </div>
         </div>
       </section>
