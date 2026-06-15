@@ -38,7 +38,8 @@ export default function Navbar() {
   useEffect(() => setMounted(true), []);
 
   const links = [
-    { href: "/",        label: "Policy Editor",      icon: Shield   },
+    { href: "/",        label: "Home",                icon: Shield   },
+    { href: "/app",     label: "Policy Editor",       icon: Shield   },
     { href: "/agent",   label: "Agent Log",           icon: Activity },
     { href: "/transfer", label: "Transfer Identity",  icon: Repeat2  },
     { href: "/profile", label: "ENS Profile",         icon: Search   },
