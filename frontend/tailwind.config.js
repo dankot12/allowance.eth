@@ -10,26 +10,26 @@ module.exports = {
       colors: {
         // Core palette — electric violet/indigo meets dark metal
         brand: {
-          50:  '#f0edff',
-          100: '#e0daff',
-          200: '#c4b5ff',
-          300: '#a78bff',
-          400: '#8b5cf6',
-          500: '#7c3aed',
-          600: '#6d28d9',
-          700: '#5b21b6',
-          800: '#4c1d95',
-          900: '#2e1065',
+          50:  '#ecfdf5',
+          100: '#d1fae5',
+          200: '#a7f3d0',
+          300: '#6ee7b7',
+          400: '#34d399',
+          500: '#10b981',
+          600: '#059669',
+          700: '#047857',
+          800: '#065f46',
+          900: '#064e3b',
         },
-        // Surface dark scale
+        // Surface dark scale — deep green-tinted charcoal
         surface: {
-          0:    '#08080f',   // page background
-          50:   '#0d0d1a',   // card bg
-          100:  '#111128',   // card hover
-          200:  '#16163a',   // input bg
-          300:  '#1e1e50',   // border subtle
-          400:  '#2a2a6e',   // border active
-          500:  '#3b3b8f',   // muted
+          0:    '#070d0b',   // page background
+          50:   '#0c1612',   // card bg
+          100:  '#102018',   // card hover
+          200:  '#162c22',   // input bg
+          300:  '#1d3d30',   // border subtle
+          400:  '#265445',   // border active
+          500:  '#2e6b57',   // muted
         },
         // Status colors
         success: '#10b981',
@@ -44,13 +44,13 @@ module.exports = {
       backgroundImage: {
         'gradient-radial':   'radial-gradient(var(--tw-gradient-stops))',
         'gradient-conic':    'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-        'hero-glow':         'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124,58,237,0.3), transparent)',
+        'hero-glow':         'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(16,185,129,0.2), transparent)',
         'card-shine':        'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 50%)',
       },
       boxShadow: {
-        'glow-sm':  '0 0 10px rgba(124,58,237,0.3)',
-        'glow-md':  '0 0 20px rgba(124,58,237,0.4)',
-        'glow-lg':  '0 0 40px rgba(124,58,237,0.5)',
+        'glow-sm':  '0 0 10px rgba(16,185,129,0.3)',
+        'glow-md':  '0 0 20px rgba(16,185,129,0.4)',
+        'glow-lg':  '0 0 40px rgba(16,185,129,0.5)',
         'inner-glow': 'inset 0 1px 0 rgba(255,255,255,0.08)',
       },
       animation: {
@@ -69,8 +69,8 @@ module.exports = {
           '50%':      { transform: 'translateY(-8px)' },
         },
         glowPulse: {
-          '0%, 100%': { boxShadow: '0 0 10px rgba(124,58,237,0.3)' },
-          '50%':      { boxShadow: '0 0 25px rgba(124,58,237,0.6)' },
+          '0%, 100%': { boxShadow: '0 0 10px rgba(16,185,129,0.3)' },
+          '50%':      { boxShadow: '0 0 25px rgba(16,185,129,0.6)' },
         },
       },
     },

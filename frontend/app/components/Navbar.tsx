@@ -45,7 +45,7 @@ export default function Navbar() {
   ];
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-surface-300/50 backdrop-blur-xl bg-[#08080f]/80">
+    <nav className="sticky top-0 z-50 border-b border-surface-300/50 backdrop-blur-xl bg-[#070d0b]/90">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 group">
@@ -53,7 +53,7 @@ export default function Navbar() {
             <Shield className="w-4 h-4 text-white" />
           </div>
           <span className="font-semibold text-white tracking-tight">
-            allowance<span className="text-brand-400">.eth</span>
+            allowance<span className="text-brand-400 font-mono">.eth</span>
           </span>
         </Link>
 
